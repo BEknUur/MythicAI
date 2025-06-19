@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     ACTOR_ID:str 
     BACKEND_BASE:str
     OPENAI_API_KEY:str 
+    GOOGLE_API_KEY:str
 
     class Config:
         env_file=".env"

@@ -1,0 +1,4 @@
+{{#each scenes}}
+## Сцена {{@index}}
+{{this}}
+{{/each}}

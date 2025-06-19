@@ -8,3 +8,12 @@ weasyprint
 openai==0.28.1
 anyio
 asyncio
+markdown
+python-multipart    
+pillow
+transformers
+google-generativeai
+
+
+
+

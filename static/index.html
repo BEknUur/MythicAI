@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Цифровые мемуары 📖</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap');
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --paper-color: #faf8f3;
+            --ink-color: #2c1810;
+            --accent-color: #8b4513;
+            --gold-color: #d4af37;
+        }
+        
+        body {
+            font-family: 'Libre Baskerville', serif;
+            background: linear-gradient(135deg, #f5f5dc 0%, #e6e6dc 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: var(--ink-color);
+        }
+        
+        .container {
+            background: var(--paper-color);
+            border-radius: 20px;
+            box-shadow: 
+                0 20px 60px rgba(44, 24, 16, 0.15),
+                inset 0 0 0 2px #e8e0d0,
+                0 0 0 1px #d0c8b8;
+            padding: 50px;
+            max-width: 650px;
+            width: 100%;
+            text-align: center;
+            position: relative;
+        }
+        
+        .container::before {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: -5px;
+            right: -5px;
+            bottom: -5px;
+            background: linear-gradient(45deg, #c9b876, #d4c5a9);
+            border-radius: 25px;
+            z-index: -1;
+        }
+        
+        .logo {
+            font-size: 3.5em;
+            margin-bottom: 15px;
+            filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.1));
+        }
+        
+        h1 {
+            color: var(--accent-color);
+            margin-bottom: 15px;
+            font-size: 2.8em;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .subtitle {
+            color: var(--accent-color);
+            margin-bottom: 30px;
+            font-size: 1.3em;
+            font-style: italic;
+            opacity: 0.8;
+            line-height: 1.4;
+        }
+        
+        .concept-description {
+            background: linear-gradient(135deg, #f8f6f0, #f0ebe0);
+            padding: 25px;
+            border-radius: 15px;
+            margin: 25px 0;
+            border-left: 5px solid var(--gold-color);
+            text-align: left;
+            font-style: italic;
+            color: var(--ink-color);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        
+        .input-group {
+            margin-bottom: 30px;
+            text-align: left;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 12px;
+            font-weight: 600;
+            color: var(--accent-color);
+            font-size: 1.1em;
+        }
+        
+        input[type="url"] {
+            width: 100%;
+            padding: 18px 25px;
+            border: 2px solid #d4c5a9;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            background: #f8f5f0;
+            font-family: 'Libre Baskerville', serif;
+        }
+        
+        input[type="url"]:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 3px rgba(139, 69, 19, 0.1);
+            background: white;
+            transform: translateY(-2px);
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, var(--accent-color), #a0522d, var(--gold-color));
+            color: var(--paper-color);
+            border: none;
+            padding: 18px 35px;
+            border-radius: 15px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.3s ease;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            font-family: 'Libre Baskerville', serif;
+            letter-spacing: 0.5px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 30px rgba(139, 69, 19, 0.3);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status {
+            margin-top: 35px;
+            padding: 25px;
+            border-radius: 15px;
+            display: none;
+            border: 2px solid #d4c5a9;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        
+        .status.processing {
+            background: linear-gradient(135deg, #f8f6f0, #f0ebe0);
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+            display: block;
+        }
+        
+        .status.ready {
+            background: linear-gradient(135deg, #e8f5e8, #f0f8f0);
+            border-color: #4caf50;
+            color: #2e7d32;
+            display: block;
+        }
+        
+        .status.error {
+            background: linear-gradient(135deg, #ffebee, #fce4ec);
+            border-color: #f44336;
+            color: #c62828;
+            display: block;
+        }
+        
+        .progress {
+            margin: 25px 0;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: rgba(0,0,0,0.1);
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(45deg, var(--accent-color), var(--gold-color));
+            width: 0%;
+            transition: width 0.4s ease;
+            border-radius: 6px;
+        }
+        
+        .download-links {
+            margin-top: 25px;
+        }
+        
+        .download-btn {
+            display: inline-block;
+            margin: 8px 12px;
+            padding: 12px 25px;
+            background: var(--accent-color);
+            color: var(--paper-color);
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            font-family: 'Libre Baskerville', serif;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .download-btn:hover {
+            background: #a0522d;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+        }
+        
+        .example {
+            margin-top: 25px;
+            font-size: 0.95em;
+            color: var(--accent-color);
+            opacity: 0.8;
+            font-style: italic;
+        }
+        
+        .example a {
+            color: var(--accent-color);
+            text-decoration: none;
+            font-weight: 600;
+            border-bottom: 1px dotted var(--accent-color);
+        }
+        
+        .example a:hover {
+            opacity: 1;
+            border-bottom-style: solid;
+        }
+        
+        .features {
+            margin-top: 35px;
+            text-align: left;
+        }
+        
+        .features h3 {
+            color: var(--accent-color);
+            margin-bottom: 20px;
+            font-size: 1.4em;
+            text-align: center;
+            font-weight: 700;
+        }
+        
+        .feature {
+            margin: 12px 0;
+            padding: 18px;
+            background: linear-gradient(135deg, #f8f5f0, transparent);
+            border-radius: 10px;
+            border-left: 4px solid var(--gold-color);
+            font-size: 0.98em;
+            color: var(--ink-color);
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        }
+        
+        .feature:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 22px;
+            height: 22px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top: 2px solid white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 12px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .demo-badge {
+            background: var(--gold-color);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-left: 10px;
+            box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">📖✨</div>
+        <h1>Цифровые мемуары <span class="demo-badge">DEMO</span></h1>
+        <p class="subtitle">Создаю настоящие книги на основе Instagram профилей<br>
+        10 страниц • Реалистичный дизайн • Захватывающие истории</p>
+        
+        <div class="concept-description">
+            <strong>Уникальная концепция:</strong> Я - цифровой антрополог, который изучает Instagram профили и создает из них настоящие мемуары. 
+            Я анализирую фотографии, придумываю истории, изучаю социальные связи и создаю книгу в стиле классической литературы 
+            с винтажным дизайном и живыми, человечными текстами.
+        </div>
+        
+        <form id="bookForm">
+            <div class="input-group">
+                <label for="instagram-url">🔍 Instagram профиль для исследования:</label>
+                <input 
+                    type="url" 
+                    id="instagram-url" 
+                    placeholder="https://www.instagram.com/username"
+                    required
+                />
+            </div>
+            <button type="submit" class="btn" id="generateBtn">
+                ✍️ Создать книгу мемуаров
+            </button>
+        </form>
+        
+        <div class="example">
+            <strong>Попробуйте пример:</strong> 
+            <a href="#" onclick="document.getElementById('instagram-url').value='https://www.instagram.com/ualikhaanuly'">
+                https://www.instagram.com/ualikhaanuly
+            </a>
+        </div>
+        
+        <div id="status" class="status">
+            <div id="statusMessage"></div>
+            <div class="progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+            </div>
+            <div id="downloadLinks" class="download-links"></div>
+        </div>
+        
+        <div class="features">
+            <h3>📚 Что входит в книгу мемуаров:</h3>
+            <div class="feature">📄 <strong>Страница 1:</strong> Элегантная обложка в стиле классической книги</div>
+            <div class="feature">👤 <strong>Страница 2:</strong> Профиль героя с подробной статистикой</div>
+            <div class="feature">✨ <strong>Страница 3:</strong> История случайной встречи в интернете</div>
+            <div class="feature">👁️ <strong>Страница 4:</strong> Первые впечатления от фотографий</div>
+            <div class="feature">📸 <strong>Страницы 5-6:</strong> Галерея лучших фото в винтажных рамках</div>
+            <div class="feature">📖 <strong>Страница 7:</strong> Придуманная история на основе одного кадра</div>
+            <div class="feature">🧠 <strong>Страница 8:</strong> Психологический анализ цифровой личности</div>
+            <div class="feature">🔍 <strong>Страница 9:</strong> Тайны и загадки "между строк"</div>
+            <div class="feature">💭 <strong>Страница 10:</strong> Финальный портрет и прощальные мысли</div>
+        </div>
+    </div>
+
+    <script>
+        let currentRunId = null;
+        let checkInterval = null;
+
+        document.getElementById('bookForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const url = document.getElementById('instagram-url').value;
+            const btn = document.getElementById('generateBtn');
+            
+            // Блокируем кнопку
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>Начинаю исследование...';
+            
+            try {
+                // Запускаем парсинг
+                const response = await fetch(`/start-scrape?url=${encodeURIComponent(url)}`);
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentRunId = data.runId;
+                    showStatus('processing', 'Изучаю Instagram профиль и собираю материалы...');
+                    startProgress();
+                    
+                    // Начинаем проверку статуса
+                    checkInterval = setInterval(checkStatus, 3000);
+                } else {
+                    throw new Error(data.detail || 'Ошибка при запуске исследования');
+                }
+            } catch (error) {
+                showStatus('error', `Ошибка: ${error.message}`);
+                resetButton();
+            }
+        });
+
+        async function checkStatus() {
+            if (!currentRunId) return;
+            
+            try {
+                const response = await fetch(`/status/${currentRunId}`);
+                const data = await response.json();
+                
+                if (data.stages.data_collected) {
+                    updateProgress(33, 'Данные собраны, загружаю фотографии для анализа...');
+                }
+                
+                if (data.stages.images_downloaded) {
+                    updateProgress(66, 'Фотографии изучены, пишу мемуары и создаю дизайн...');
+                }
+                
+                if (data.stages.book_generated) {
+                    updateProgress(100, 'Книга мемуаров готова! 📖');
+                    clearInterval(checkInterval);
+                    
+                    // Показываем ссылки для скачивания
+                    const profileInfo = data.profile ? 
+                        `Мемуары о @${data.profile.username} (${data.profile.fullName}) готовы к прочтению` : 
+                        'Ваша книга мемуаров готова!';
+                    
+                    showStatus('ready', profileInfo);
+                    
+                    const downloadHtml = `
+                        <a href="/download/${currentRunId}/book.pdf" class="download-btn">📄 Скачать PDF</a>
+                        <a href="/view/${currentRunId}/book.html" class="download-btn" target="_blank">🌐 Читать онлайн</a>
+                    `;
+                    document.getElementById('downloadLinks').innerHTML = downloadHtml;
+                    
+                    resetButton();
+                }
+            } catch (error) {
+                console.error('Ошибка проверки статуса:', error);
+            }
+        }
+
+        function showStatus(type, message) {
+            const status = document.getElementById('status');
+            const statusMessage = document.getElementById('statusMessage');
+            
+            status.className = `status ${type}`;
+            statusMessage.innerHTML = message;
+        }
+
+        function updateProgress(percent, message) {
+            document.getElementById('progressFill').style.width = `${percent}%`;
+            document.getElementById('statusMessage').innerHTML = message;
+        }
+
+        function startProgress() {
+            updateProgress(10, 'Инициализация исследования...');
+        }
+
+        function resetButton() {
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = false;
+            btn.innerHTML = '✍️ Создать книгу мемуаров';
+        }
+    </script>
+</body>
+</html> 
