@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+apify-client
+httpx
+python-dotenv
+pydantic-settings
+weasyprint
+openai==0.28.1
+anyio
+asyncio
