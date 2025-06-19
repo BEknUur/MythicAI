@@ -1,5 +1,8 @@
 import json
+import base64
+from io import BytesIO
 from pathlib import Path
+from PIL import Image, ImageFilter, ImageEnhance
 from app.services.llm_client import generate_text
 from weasyprint import HTML, CSS
 
@@ -261,30 +264,48 @@ def analyze_photos_for_story(images: list[Path], analysis: dict) -> str:
 def create_realistic_book_html(content: dict, analysis: dict, images: list[Path]) -> str:
     """Создает HTML реалистичной книги с настоящим книжным дизайном"""
     
-    # Выбираем лучшие изображения
-    selected_images = images[:6] if len(images) >= 6 else images
+    # Выбираем лучшие изображения и конвертируем их в base64 с разными стилями
+    selected_images = images[:8] if len(images) >= 8 else images
     
-    # Создаем галерею с описаниями
+    # Стили для фотографий
+    photo_styles = ["vintage", "bw", "soft", "dramatic", "original", "vintage", "soft", "bw"]
+    
+    # Создаем главное фото для обложки
+    cover_image = ""
+    if selected_images:
+        cover_image = convert_image_to_base64(selected_images[0], max_size=(400, 400), style="dramatic")
+    
+    # Создаем галерею с разными стилями
     photo_gallery = ""
     photo_descriptions = [
         "Мгновение, застывшее во времени",
-        "Взгляд, полный историй", 
-        "Место, где остались воспоминания",
-        "Улыбка, которая говорит больше слов",
+        "Взгляд сквозь призму воспоминаний", 
+        "Место, где живут мечты",
+        "Улыбка, которая греет душу",
         "Тень прошлого в настоящем",
-        "Свет, освещающий душу"
+        "Свет, что освещает путь",
+        "Момент истинной красоты",
+        "История, рассказанная без слов"
     ]
     
+    frame_styles = ["polaroid", "classic", "modern", "vintage", "gallery", "polaroid", "classic", "modern"]
+    
     for i, img in enumerate(selected_images):
+        style = photo_styles[i] if i < len(photo_styles) else "original"
+        frame_style = frame_styles[i] if i < len(frame_styles) else "classic"
         desc = photo_descriptions[i] if i < len(photo_descriptions) else f"Момент {i+1}"
-        photo_gallery += f"""
-        <div class="photo-page">
-            <div class="photo-frame">
-                <img src="{img}" alt="Фотография {i+1}" class="book-photo" />
-                <p class="photo-story">{desc}</p>
+        
+        img_base64 = convert_image_to_base64(img, max_size=(600, 450), style=style)
+        if img_base64:
+            photo_gallery += f"""
+            <div class="photo-page">
+                <div class="photo-frame {frame_style}">
+                    <img src="{img_base64}" alt="Фотография {i+1}" class="book-photo" />
+                    <p class="photo-story">{desc}</p>
+                    <div class="photo-number">#{i+1}</div>
+                </div>
             </div>
-        </div>
-        """
+            """
     
     html = f"""
     <!DOCTYPE html>
@@ -294,7 +315,7 @@ def create_realistic_book_html(content: dict, analysis: dict, images: list[Path]
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>{content.get('title', 'Цифровые мемуары')}</title>
         <style>
-            @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
+            @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Dancing+Script:wght@400;700&display=swap');
             
             * {{
                 margin: 0;
@@ -308,6 +329,8 @@ def create_realistic_book_html(content: dict, analysis: dict, images: list[Path]
                 --accent-color: #8b4513;
                 --shadow-color: rgba(44, 24, 16, 0.1);
                 --gold-color: #d4af37;
+                --silver-color: #c0c0c0;
+                --sepia-color: #704214;
             }}
             
             body {{
@@ -343,14 +366,19 @@ def create_realistic_book_html(content: dict, analysis: dict, images: list[Path]
                 z-index: -1;
             }}
             
-            /* Обложка */
+            /* Обложка с фото */
             .cover {{
-                background: linear-gradient(135deg, #2c1810 0%, #5d4e37 50%, #8b4513 100%);
+                background: linear-gradient(135deg, #1a1a1a 0%, #2c1810 30%, #5d4e37 70%, #8b4513 100%);
                 color: var(--gold-color);
-                padding: 80px 50px;
+                padding: 60px 50px;
                 text-align: center;
                 position: relative;
                 border-radius: 8px 8px 0 0;
+                min-height: 700px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
                 background-image: 
                     radial-gradient(circle at 20% 20%, rgba(212, 175, 55, 0.1) 0%, transparent 50%),
                     radial-gradient(circle at 80% 80%, rgba(212, 175, 55, 0.05) 0%, transparent 50%);
@@ -363,41 +391,56 @@ def create_realistic_book_html(content: dict, analysis: dict, images: list[Path]
                 left: 30px;
                 right: 30px;
                 bottom: 30px;
-                border: 2px solid var(--gold-color);
-                border-radius: 4px;
-                opacity: 0.6;
+                border: 3px solid var(--gold-color);
+                border-radius: 8px;
+                opacity: 0.7;
+            }}
+            
+            .cover-photo {{
+                width: 200px;
+                height: 200px;
+                object-fit: cover;
+                border-radius: 50%;
+                border: 6px solid var(--gold-color);
+                box-shadow: 
+                    0 0 30px rgba(212, 175, 55, 0.3),
+                    inset 0 0 20px rgba(0,0,0,0.2);
+                margin-bottom: 30px;
+                position: relative;
+                z-index: 2;
             }}
             
             .book-title {{
                 font-family: 'Crimson Text', serif;
-                font-size: 3.2em;
+                font-size: 3.5em;
                 font-weight: 700;
                 margin-bottom: 20px;
-                text-shadow: 2px 2px 8px rgba(0,0,0,0.7);
+                text-shadow: 3px 3px 10px rgba(0,0,0,0.8);
                 position: relative;
-                z-index: 1;
+                z-index: 2;
                 line-height: 1.1;
-                letter-spacing: 1px;
+                letter-spacing: 2px;
             }}
             
             .book-subtitle {{
-                font-size: 1.4em;
+                font-size: 1.6em;
                 font-style: italic;
                 opacity: 0.9;
                 position: relative;
-                z-index: 1;
+                z-index: 2;
                 margin-bottom: 30px;
+                font-family: 'Dancing Script', cursive;
             }}
             
             .book-author {{
-                font-size: 1.1em;
+                font-size: 1.2em;
                 font-weight: 400;
                 position: relative;
-                z-index: 1;
-                border-top: 1px solid var(--gold-color);
-                padding-top: 20px;
+                z-index: 2;
+                border-top: 2px solid var(--gold-color);
+                padding-top: 25px;
                 margin-top: 40px;
-                opacity: 0.8;
+                opacity: 0.9;
             }}
             
             /* Страницы */
@@ -435,13 +478,13 @@ def create_realistic_book_html(content: dict, analysis: dict, images: list[Path]
             
             .chapter-title {{
                 font-family: 'Crimson Text', serif;
-                font-size: 2.2em;
+                font-size: 2.4em;
                 color: var(--accent-color);
                 text-align: center;
                 margin-bottom: 40px;
                 font-weight: 600;
                 position: relative;
-                padding-bottom: 15px;
+                padding-bottom: 20px;
             }}
             
             .chapter-title::after {{
@@ -528,45 +571,139 @@ def create_realistic_book_html(content: dict, analysis: dict, images: list[Path]
                 margin-top: 5px;
             }}
             
-            /* Фотографии */
+            /* НОВЫЕ СТИЛИ ДЛЯ ФОТОГРАФИЙ */
             .photo-page {{
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                min-height: 500px;
+                min-height: 700px;
+                padding: 40px 20px;
             }}
             
             .photo-frame {{
-                background: white;
-                padding: 20px;
-                border: 8px solid #e8e0d0;
-                box-shadow: 
-                    0 15px 35px var(--shadow-color),
-                    inset 0 0 0 2px #f5f3ed;
-                transform: rotate(-1deg);
-                max-width: 400px;
+                position: relative;
+                max-width: 500px;
                 text-align: center;
+                transition: transform 0.3s ease;
             }}
             
-            .photo-frame:nth-child(even) {{
+            /* Поляроид стиль */
+            .photo-frame.polaroid {{
+                background: white;
+                padding: 20px 20px 60px 20px;
+                border-radius: 2px;
+                box-shadow: 
+                    0 20px 40px rgba(0,0,0,0.2),
+                    0 6px 20px rgba(0,0,0,0.15);
+                transform: rotate(-2deg);
+            }}
+            
+            .photo-frame.polaroid:nth-child(even) {{
+                transform: rotate(2deg);
+            }}
+            
+            /* Классическая рамка */
+            .photo-frame.classic {{
+                background: linear-gradient(45deg, #d4af37, #ffd700);
+                padding: 25px;
+                border-radius: 8px;
+                box-shadow: 
+                    0 15px 35px rgba(0,0,0,0.3),
+                    inset 0 0 20px rgba(255,255,255,0.2);
+                transform: rotate(-1deg);
+            }}
+            
+            .photo-frame.classic .book-photo {{
+                border: 5px solid white;
+            }}
+            
+            /* Современная рамка */
+            .photo-frame.modern {{
+                background: linear-gradient(135deg, #2c3e50, #34495e);
+                padding: 15px;
+                border-radius: 15px;
+                box-shadow: 
+                    0 25px 50px rgba(0,0,0,0.25),
+                    0 0 0 1px rgba(255,255,255,0.1);
                 transform: rotate(1deg);
+            }}
+            
+            .photo-frame.modern .book-photo {{
+                border-radius: 10px;
+            }}
+            
+            /* Винтажная рамка */
+            .photo-frame.vintage {{
+                background: linear-gradient(45deg, #8b4513, #a0522d);
+                padding: 30px;
+                border-radius: 4px;
+                box-shadow: 
+                    0 20px 40px rgba(139, 69, 19, 0.4),
+                    inset 0 0 30px rgba(0,0,0,0.3);
+                transform: rotate(-1.5deg);
+                position: relative;
+            }}
+            
+            .photo-frame.vintage::before {{
+                content: '';
+                position: absolute;
+                top: 15px;
+                left: 15px;
+                right: 15px;
+                bottom: 15px;
+                border: 2px solid var(--gold-color);
+                opacity: 0.6;
+            }}
+            
+            /* Галерейная рамка */
+            .photo-frame.gallery {{
+                background: white;
+                padding: 40px;
+                border: 1px solid #ddd;
+                box-shadow: 
+                    0 10px 30px rgba(0,0,0,0.1),
+                    0 0 0 8px white,
+                    0 0 0 9px #ddd;
+                transform: rotate(0deg);
             }}
             
             .book-photo {{
                 width: 100%;
+                max-width: 400px;
                 height: 300px;
                 object-fit: cover;
                 border-radius: 4px;
-                filter: sepia(15%) contrast(1.05) brightness(1.02);
+                display: block;
+                transition: all 0.3s ease;
             }}
             
             .photo-story {{
                 font-family: 'Crimson Text', serif;
                 font-style: italic;
                 color: var(--accent-color);
-                margin-top: 15px;
-                font-size: 1.1em;
+                margin-top: 20px;
+                font-size: 1.2em;
                 line-height: 1.4;
+                max-width: 300px;
+                margin-left: auto;
+                margin-right: auto;
+            }}
+            
+            .photo-number {{
+                position: absolute;
+                top: -10px;
+                right: -10px;
+                background: var(--gold-color);
+                color: white;
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.9em;
+                font-weight: bold;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.2);
             }}
             
             /* Декоративные элементы */
@@ -609,10 +746,11 @@ def create_realistic_book_html(content: dict, analysis: dict, images: list[Path]
     </head>
     <body>
         <div class="book-container">
-            <!-- Страница 1: Обложка -->
+            <!-- Страница 1: Обложка с фото -->
             <div class="cover">
+                {f'<img src="{cover_image}" alt="Главное фото" class="cover-photo" />' if cover_image else ''}
                 <h1 class="book-title">{content.get('title', 'Цифровые мемуары')}</h1>
-                <p class="book-subtitle">Личные наблюдения незнакомца</p>
+                <p class="book-subtitle">Портрет современной души</p>
                 <p class="book-author">Из записок цифрового антрополога</p>
             </div>
             
@@ -621,7 +759,7 @@ def create_realistic_book_html(content: dict, analysis: dict, images: list[Path]
                 <div class="page-number">2</div>
                 <div class="hero-profile">
                     <h3>Герой нашей истории</h3>
-                    <p style="font-size: 1.2em; margin: 20px 0;"><strong>@{analysis['username']}</strong></p>
+                    <p style="font-size: 1.3em; margin: 20px 0;"><strong>@{analysis['username']}</strong></p>
                     <p style="font-size: 1.1em; color: #666;">{analysis['full_name']}</p>
                     <p style="font-style: italic; margin: 20px 0; color: var(--accent-color);">"{analysis.get('bio', 'Человек, живущий свою жизнь')}"</p>
                     <div class="hero-stats">
@@ -659,30 +797,30 @@ def create_realistic_book_html(content: dict, analysis: dict, images: list[Path]
                 </div>
             </div>
             
-            <!-- Страница 5-6: Фотографии -->
+            <!-- Страницы 5-12: Стильная фотогалерея -->
             {photo_gallery}
             
-            <!-- Страница 7: История из фото -->
+            <!-- Страница: История из фото -->
             <div class="page">
-                <div class="page-number">7</div>
+                <div class="page-number">{13 if len(selected_images) >= 8 else 5 + len(selected_images)}</div>
                 <h2 class="chapter-title">История одного кадра</h2>
                 <div class="chapter-content">
                     <p>{content.get('story_from_photo', 'Глядя на эту фотографию, я придумал историю...')}</p>
                 </div>
             </div>
             
-            <!-- Страница 8: Социальный анализ -->
+            <!-- Страница: Социальный анализ -->
             <div class="page">
-                <div class="page-number">8</div>
+                <div class="page-number">{14 if len(selected_images) >= 8 else 6 + len(selected_images)}</div>
                 <h2 class="chapter-title">Цифровая личность</h2>
                 <div class="chapter-content">
                     <p>{content.get('social_analysis', 'Анализируя активность в социальных сетях...')}</p>
                 </div>
             </div>
             
-            <!-- Страница 9: Скрытая история -->
+            <!-- Страница: Скрытая история -->
             <div class="page">
-                <div class="page-number">9</div>
+                <div class="page-number">{15 if len(selected_images) >= 8 else 7 + len(selected_images)}</div>
                 <h2 class="chapter-title">Между строк</h2>
                 <div class="chapter-content">
                     <p>{content.get('hidden_story', 'За публичным образом скрывается...')}</p>
@@ -693,9 +831,9 @@ def create_realistic_book_html(content: dict, analysis: dict, images: list[Path]
                 </div>
             </div>
             
-            <!-- Страница 10: Финал -->
+            <!-- Финальная страница -->
             <div class="page final-page">
-                <div class="page-number">10</div>
+                <div class="page-number">{16 if len(selected_images) >= 8 else 8 + len(selected_images)}</div>
                 <h2 class="chapter-title">Прощальный портрет</h2>
                 <div class="chapter-content">
                     <p>{content.get('final_portrait', 'Завершая наше знакомство...')}</p>
@@ -704,6 +842,7 @@ def create_realistic_book_html(content: dict, analysis: dict, images: list[Path]
                 <div class="book-end">
                     <p>Конец истории о @{analysis['username']}</p>
                     <p style="margin-top: 20px; font-size: 0.9em;">Создано с любовью к человеческим историям</p>
+                    <p style="margin-top: 10px; font-size: 0.8em; opacity: 0.7;">🎨 Фотографии обработаны в стиле арт-книги</p>
                 </div>
             </div>
         </div>
@@ -801,3 +940,64 @@ def build_book(run_id: str, images: list[Path], texts: str):
                 print(f"📄 Создана только HTML версия: {out / 'book.html'}")
         except Exception as final_error:
             print(f"❌ Критическая ошибка: {final_error}")
+
+def convert_image_to_base64(image_path: Path, max_size: tuple = (800, 600), style: str = "original") -> str:
+    """Конвертирует изображение в base64 с применением стилей для PDF"""
+    try:
+        with Image.open(image_path) as img:
+            # Конвертируем в RGB если нужно
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # Изменяем размер с сохранением пропорций
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
+            
+            # Применяем стили
+            if style == "vintage":
+                # Винтажный стиль
+                enhancer = ImageEnhance.Color(img)
+                img = enhancer.enhance(0.7)  # Уменьшаем насыщенность
+                enhancer = ImageEnhance.Contrast(img)
+                img = enhancer.enhance(1.2)  # Увеличиваем контраст
+                # Добавляем сепию
+                pixels = img.load()
+                for y in range(img.height):
+                    for x in range(img.width):
+                        r, g, b = pixels[x, y]
+                        tr = int(0.393 * r + 0.769 * g + 0.189 * b)
+                        tg = int(0.349 * r + 0.686 * g + 0.168 * b)
+                        tb = int(0.272 * r + 0.534 * g + 0.131 * b)
+                        pixels[x, y] = (min(255, tr), min(255, tg), min(255, tb))
+                        
+            elif style == "bw":
+                # Черно-белый с легким контрастом
+                img = img.convert('L').convert('RGB')
+                enhancer = ImageEnhance.Contrast(img)
+                img = enhancer.enhance(1.3)
+                
+            elif style == "soft":
+                # Мягкий, теплый стиль
+                enhancer = ImageEnhance.Brightness(img)
+                img = enhancer.enhance(1.1)
+                enhancer = ImageEnhance.Color(img)
+                img = enhancer.enhance(0.9)
+                img = img.filter(ImageFilter.GaussianBlur(radius=0.5))
+                
+            elif style == "dramatic":
+                # Драматичный стиль
+                enhancer = ImageEnhance.Contrast(img)
+                img = enhancer.enhance(1.4)
+                enhancer = ImageEnhance.Brightness(img)
+                img = enhancer.enhance(0.9)
+                enhancer = ImageEnhance.Color(img)
+                img = enhancer.enhance(1.2)
+            
+            # Конвертируем в base64
+            buffer = BytesIO()
+            img.save(buffer, format='JPEG', quality=85, optimize=True)
+            img_str = base64.b64encode(buffer.getvalue()).decode()
+            return f"data:image/jpeg;base64,{img_str}"
+            
+    except Exception as e:
+        print(f"❌ Ошибка при обработке изображения {image_path}: {e}")
+        return ""
