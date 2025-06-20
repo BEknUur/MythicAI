@@ -2,9 +2,15 @@ import json
 import base64
 from io import BytesIO
 from pathlib import Path
-from PIL import Image, ImageFilter, ImageEnhance
+from PIL import Image, ImageFilter, ImageEnhance, ImageDraw, ImageFont
 from app.services.llm_client import generate_text
-from weasyprint import HTML, CSS
+import markdown
+import pdfkit
+import qrcode
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from typing import List, Tuple
 
 def analyze_profile_data(posts_data: list) -> dict:
     """Анализирует данные профиля для создания контекста книги"""
@@ -27,7 +33,14 @@ def analyze_profile_data(posts_data: list) -> dict:
         "captions": [],
         "hashtags": set(),
         "mentions": set(),
-        "post_details": []
+        "post_details": [],
+        "total_likes": 0,
+        "total_comments": 0,
+        "post_dates": [],
+        "most_liked_post": None,
+        "most_commented_post": None,
+        "common_hashtags": [],
+        "mentioned_users": []
     }
     
     # Собираем детальную информацию о постах
@@ -39,9 +52,23 @@ def analyze_profile_data(posts_data: list) -> dict:
             "comments": post.get("commentsCount", 0),
             "type": post.get("type", ""),
             "alt": post.get("alt", ""),
-            "timestamp": post.get("timestamp", "")
+            "timestamp": post.get("timestamp", ""),
+            "hashtags": post.get("hashtags", []),
+            "mentions": post.get("mentions", []),
+            "url": post.get("url", "")
         }
         analysis["post_details"].append(post_info)
+        
+        # Накапливаем статистику
+        if post.get("likesCount"):
+            analysis["total_likes"] += post["likesCount"]
+            if not analysis["most_liked_post"] or post["likesCount"] > analysis["most_liked_post"]["likes"]:
+                analysis["most_liked_post"] = post_info
+                
+        if post.get("commentsCount"):
+            analysis["total_comments"] += post["commentsCount"]
+            if not analysis["most_commented_post"] or post["commentsCount"] > analysis["most_commented_post"]["comments"]:
+                analysis["most_commented_post"] = post_info
         
         if post.get("locationName"):
             analysis["locations"].append(post["locationName"])
@@ -49,10 +76,134 @@ def analyze_profile_data(posts_data: list) -> dict:
         if post.get("caption"):
             analysis["captions"].append(post["caption"])
         
+        if post.get("timestamp"):
+            analysis["post_dates"].append(post["timestamp"])
+            
         analysis["hashtags"].update(post.get("hashtags", []))
         analysis["mentions"].update(post.get("mentions", []))
     
+    # Анализируем популярные хэштеги
+    hashtag_count = {}
+    for post in posts:
+        for hashtag in post.get("hashtags", []):
+            hashtag_count[hashtag] = hashtag_count.get(hashtag, 0) + 1
+    
+    analysis["common_hashtags"] = sorted(hashtag_count.items(), key=lambda x: x[1], reverse=True)[:5]
+    analysis["mentioned_users"] = list(analysis["mentions"])[:10]
+    
     return analysis
+
+def create_markdown_from_content(content: dict, analysis: dict, images: list[Path]) -> str:
+    """Создает Markdown версию книги для лучшего PDF"""
+    
+    username = analysis.get('username', 'Неизвестный')
+    full_name = analysis.get('full_name', username)
+    followers = analysis.get('followers', 0)
+    following = analysis.get('following', 0)
+    posts_count = analysis.get('posts_count', 0)
+    bio = analysis.get('bio', '')
+    verified = analysis.get('verified', False)
+    total_likes = analysis.get('total_likes', 0)
+    total_comments = analysis.get('total_comments', 0)
+    
+    # Реальные данные из Instagram
+    real_captions = analysis.get('captions', [])[:6]
+    common_hashtags = analysis.get('common_hashtags', [])[:5]
+    mentioned_users = analysis.get('mentioned_users', [])[:5]
+    locations = analysis.get('locations', [])[:5]
+    most_liked = analysis.get('most_liked_post')
+    
+    markdown_content = f"""
+# {content.get('title', 'Романтическая книга о @' + username)}
+
+*Романтическое посвящение*
+
+---
+
+## @{username}
+### {full_name}
+{f'✓ **Verified**' if verified else ''}
+
+---
+
+## 🎯 Цифры восхищения
+
+| Статистика | Значение |
+|------------|----------|
+| 👥 Подписчики | {followers:,} |
+| 📱 Посты | {posts_count} |
+| 👥 Подписки | {following:,} |
+| ❤️ Лайки | {total_likes:,} |
+| 💬 Комментарии | {total_comments:,} |
+
+{f'> *"{bio}"*' if bio else ''}
+
+{content.get('engagement_story', 'Статистика говорит сама за себя...')}
+
+---
+
+## 💫 Романтическое вступление
+
+{content.get('intro', 'Прекрасные слова о встрече...')}
+
+---
+
+## 📱 Instagram-книга
+
+### 📝 Реальные подписи к постам
+
+{"".join([f'> "{caption}"\n\n' for caption in real_captions if caption])}
+
+
+
+### 📍 Посещенные места
+
+{chr(10).join([f'- 📍 {location}' for location in locations])}
+
+{content.get('locations_journey', 'Путешествие по местам...')}
+
+### 👥 Упоминания друзей
+
+{" ".join([f'`@{user}`' for user in mentioned_users])}
+
+{f'''
+### 🏆 Самый популярный пост
+
+> "{most_liked.get("caption", "Без подписи")}"
+
+**❤️ {most_liked.get("likes", 0)} лайков • 💬 {most_liked.get("comments", 0)} комментариев**
+''' if most_liked else ''}
+
+---
+
+## 🖼️ Галерея моментов
+
+{content.get('captions_analysis', 'Анализ подписей к постам...')}
+
+---
+
+## 🌟 Цитата
+
+> *"Красота - язык, понятный всем"*
+> 
+> — *Ральф Эмерсон*
+
+---
+
+## 💝 Финальное послание
+
+{content.get('final_message', 'Финальное послание восхищения...')}
+
+---
+
+*С искренним восхищением ❤*
+
+*Создано с любовью специально для тебя*
+
+❦ ❧ ❦
+"""
+    
+    return markdown_content
 
 def build_romantic_book(run_id: str, images: list[Path], texts: str):
     """Создание романтической книги-подарка"""
@@ -87,7 +238,10 @@ def build_romantic_book(run_id: str, images: list[Path], texts: str):
         # Создаем HTML в романтическом стиле
         html = create_romantic_book_html(romantic_content, analysis, actual_images)
         
-        # Сохраняем HTML и PDF
+        # Создаем Markdown версию
+        markdown_content = create_markdown_from_content(romantic_content, analysis, actual_images)
+        
+        # Сохраняем файлы
         out = Path("data") / run_id
         out.mkdir(parents=True, exist_ok=True)
         
@@ -95,58 +249,168 @@ def build_romantic_book(run_id: str, images: list[Path], texts: str):
         html_file = out / "book.html"
         html_file.write_text(html, encoding="utf-8")
         
-        # Создаем PDF
+        # Сохраняем Markdown файл
+        markdown_file = out / "book.md"
+        markdown_file.write_text(markdown_content, encoding="utf-8")
+        
+        # Создаем PDF через Markdown → HTML → PDF
         try:
-            print("📄 Создаем PDF версию романтической книги...")
+            print("📄 Создаем PDF через Markdown...")
             
-            # Простой CSS для PDF
-            pdf_css = CSS(string="""
-                @page {
-                    size: A4;
-                    margin: 1.5cm;
-                    background: #f8f5f0;
-                }
-                .romantic-page {
-                    page-break-before: always;
-                }
-                .cover-page {
-                    page-break-after: always;
-                }
-                body {
-                    background: #f8f5f0 !important;
-                }
-            """)
+            # Конвертируем Markdown в HTML с красивым стилем
+            markdown_html = markdown.markdown(markdown_content, extensions=['tables', 'toc'])
+            
+            # Добавляем стили для PDF
+            styled_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Книга @{analysis.get("username", "")}</title>
+                <style>
+                    body {{
+                        font-family: 'Crimson Text', serif;
+                        line-height: 1.8;
+                        color: #1a1a1a;
+                        background: white;
+                        margin: 0;
+                        padding: 40px;
+                        max-width: 800px;
+                        margin: 0 auto;
+                    }}
+                    
+                    h1 {{
+                        font-family: 'Playfair Display', serif;
+                        font-size: 2.5em;
+                        color: #1a1a1a;
+                        text-align: center;
+                        margin-bottom: 10px;
+                    }}
+                    
+                    h2 {{
+                        font-family: 'Playfair Display', serif;
+                        font-size: 2em;
+                        color: #1a1a1a;
+                        border-bottom: 2px solid #666666;
+                        padding-bottom: 10px;
+                        margin-top: 40px;
+                    }}
+                    
+                    h3 {{
+                        font-family: 'Playfair Display', serif;
+                        font-size: 1.4em;
+                        color: #1a1a1a;
+                        margin-top: 30px;
+                    }}
+                    
+                    p {{
+                        font-size: 12pt;
+                        text-align: justify;
+                        margin-bottom: 15px;
+                        text-indent: 1.5em;
+                    }}
+                    
+                    blockquote {{
+                        background: #f8f9fa;
+                        border-left: 4px solid #666666;
+                        padding: 15px 20px;
+                        margin: 20px 0;
+                        font-style: italic;
+                        border-radius: 5px;
+                    }}
+                    
+                    table {{
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin: 20px 0;
+                        background: white;
+                        border-radius: 8px;
+                        overflow: hidden;
+                    }}
+                    
+                    th, td {{
+                        padding: 12px;
+                        text-align: left;
+                        border-bottom: 1px solid #e9ecef;
+                    }}
+                    
+                    th {{
+                        background: #1a1a1a;
+                        color: white;
+                        font-weight: 600;
+                    }}
+                    
+                    code {{
+                        background: #1a1a1a;
+                        color: white;
+                        padding: 3px 8px;
+                        border-radius: 12px;
+                        font-size: 0.9em;
+                        margin: 2px;
+                        display: inline-block;
+                    }}
+                </style>
+            </head>
+            <body>
+                {markdown_html}
+            </body>
+            </html>
+            """
+            
+            # Сохраняем HTML версию для PDF
+            pdf_html_file = out / "book_for_pdf.html"
+            pdf_html_file.write_text(styled_html, encoding="utf-8")
+            
+            # Конфигурация для wkhtmltopdf
+            options = {
+                'page-size': 'A4',
+                'margin-top': '1.5cm',
+                'margin-right': '1.5cm',
+                'margin-bottom': '1.5cm',
+                'margin-left': '1.5cm',
+                'encoding': "UTF-8",
+                'no-outline': None,
+                'enable-local-file-access': None,
+                'print-media-type': None,
+                'disable-smart-shrinking': None,
+                'header-center': f'Instagram книга @{analysis.get("username", "")}',
+                'header-font-size': '10',
+                'header-spacing': '10',
+                'footer-center': '[page] из [topage]',
+                'footer-font-size': '10',
+                'footer-spacing': '10'
+            }
             
             # Создаем PDF
-            pdf_doc = HTML(string=html)
-            pdf_doc.write_pdf(str(out / "book.pdf"), stylesheets=[pdf_css])
+            pdfkit.from_file(str(pdf_html_file), str(out / "book.pdf"), options=options)
             
-            print(f"✅ Романтическая книга создана: {out / 'book.pdf'}")
-            print(f"💕 HTML версия: {out / 'book.html'}")
+            print(f"✅ Минималистичная книга создана!")
+            print(f"📄 PDF версия: {out / 'book.pdf'}")
+            print(f"📝 Markdown версия: {out / 'book.md'}")
+            print(f"📖 HTML версия: {out / 'book.html'}")
             
         except Exception as pdf_error:
             print(f"❌ Ошибка при создании PDF: {pdf_error}")
-            print(f"💕 Доступна HTML версия: {out / 'book.html'}")
+            print(f"📖 Доступны Markdown и HTML версии")
         
     except Exception as e:
-        print(f"❌ Ошибка при создании романтической книги: {e}")
+        print(f"❌ Ошибка при создании книги: {e}")
         # Создаем базовую версию
         try:
             basic_html = f"""
             <html>
             <head>
-                <title>Книга Любви</title>
+                <title>Книга</title>
                 <style>
-                    body {{ background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); 
-                           font-family: Arial, sans-serif; padding: 20px; }}
-                    .error {{ background: white; padding: 20px; border-radius: 10px; text-align: center; }}
+                    body {{ background: white; font-family: serif; padding: 20px; }}
+                    .error {{ background: #f8f9fa; padding: 20px; border-radius: 10px; text-align: center; }}
                 </style>
             </head>
             <body>
                 <div class="error">
-                    <h1>💕 Романтическая Книга</h1>
+                    <h1>📖 Книга</h1>
                     <p>Извините, произошла ошибка при создании книги: {e}</p>
-                    <p>Попробуйте еще раз позже ❤️</p>
+                    <p>Попробуйте еще раз позже</p>
                 </div>
             </body>
             </html>
@@ -162,160 +426,448 @@ def build_romantic_book(run_id: str, images: list[Path], texts: str):
         except Exception as final_error:
             print(f"❌ Критическая ошибка: {final_error}")
 
-def generate_romantic_content(analysis: dict, images: list[Path]) -> dict:
-    """Генерирует романтический контент для книги"""
+def apply_dream_pastel_effect(img: Image.Image) -> Image.Image:
+    """Применяет эффект Dream-Pastel к изображению"""
+    try:
+        # Проверяем, что изображение валидное
+        if img is None or img.size[0] == 0 or img.size[1] == 0:
+            print("❌ Недопустимое изображение для обработки")
+            return img
+            
+        # Конвертируем в RGB если нужно
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        
+        # Лёгкое размытие
+        img = img.filter(ImageFilter.GaussianBlur(1.2))
+        
+        # Цветовая коррекция в теплые тона
+        enhancer = ImageEnhance.Color(img)
+        img = enhancer.enhance(1.15)
+        
+        # Создаем теплый overlay
+        overlay = Image.new('RGBA', img.size, (255, 220, 210, 25))  # peach #ffdcd2
+        img = img.convert('RGBA')
+        img = Image.alpha_composite(img, overlay)
+        
+        # Добавляем grain (безопасно)
+        try:
+            noise = np.random.randint(0, 15, (img.size[1], img.size[0], 3), dtype=np.uint8)
+            noise_img = Image.fromarray(noise, 'RGB').convert('RGBA')
+            noise_overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+            noise_overlay.paste(noise_img, (0, 0))
+            img = Image.alpha_composite(img, noise_overlay)
+        except Exception as noise_error:
+            print(f"❌ Ошибка при добавлении шума: {noise_error}")
+        
+        # Легкое увеличение яркости
+        enhancer = ImageEnhance.Brightness(img)
+        img = enhancer.enhance(1.05)
+        
+        return img.convert('RGB')
+    except Exception as e:
+        print(f"❌ Ошибка при применении Dream-Pastel эффекта: {e}")
+        # Возвращаем оригинальное изображение при ошибке
+        try:
+            return img.convert('RGB') if img.mode != 'RGB' else img
+        except:
+            # Создаем простое изображение-заглушку
+            placeholder = Image.new('RGB', (400, 300), (240, 240, 240))
+            return placeholder
+
+def create_collage_spread(img1: Image.Image, img2: Image.Image, caption: str) -> str:
+    """Создает коллаж-разворот из двух фотографий"""
+    try:
+        # Проверяем валидность изображений
+        if img1 is None or img2 is None:
+            print("❌ Одно из изображений для коллажа отсутствует")
+            return ""
+            
+        if img1.size[0] == 0 or img1.size[1] == 0 or img2.size[0] == 0 or img2.size[1] == 0:
+            print("❌ Недопустимый размер изображений для коллажа")
+            return ""
+        
+        # Создаем холст для коллажа
+        canvas_width = 1200
+        canvas_height = 800
+        canvas = Image.new('RGB', (canvas_width, canvas_height), (255, 250, 245))
+        
+        # Подготавливаем изображения
+        img1_size = (500, 350)
+        img2_size = (500, 350)
+        
+        # Безопасное изменение размера
+        try:
+            img1 = img1.resize(img1_size, Image.Resampling.LANCZOS)
+            img2 = img2.resize(img2_size, Image.Resampling.LANCZOS)
+        except Exception as resize_error:
+            print(f"❌ Ошибка при изменении размера: {resize_error}")
+            return ""
+        
+        # Применяем dream-pastel эффект
+        img1 = apply_dream_pastel_effect(img1)
+        img2 = apply_dream_pastel_effect(img2)
+        
+        # Размещаем изображения с небольшим поворотом
+        try:
+            img1_rotated = img1.rotate(-2, expand=True, fillcolor=(255, 250, 245))
+            img2_rotated = img2.rotate(3, expand=True, fillcolor=(255, 250, 245))
+            
+            # Позиционируем на холсте
+            pos1 = (50, 150)
+            pos2 = (650, 200)
+            
+            canvas.paste(img1_rotated, pos1)
+            canvas.paste(img2_rotated, pos2)
+        except Exception as rotation_error:
+            print(f"❌ Ошибка при повороте изображений: {rotation_error}")
+            # Размещаем без поворота
+            canvas.paste(img1, (50, 150))
+            canvas.paste(img2, (650, 200))
+        
+        # Добавляем подпись посередине
+        try:
+            draw = ImageDraw.Draw(canvas)
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+            except:
+                font = ImageFont.load_default()
+            
+            # Текст с тенью
+            text_x = canvas_width // 2
+            text_y = canvas_height - 100
+            
+            # Обрезаем слишком длинный caption
+            if len(caption) > 50:
+                caption = caption[:47] + "..."
+            
+            # Тень
+            draw.text((text_x + 2, text_y + 2), caption, font=font, fill=(0, 0, 0, 100), anchor="mm")
+            # Основной текст
+            draw.text((text_x, text_y), caption, font=font, fill=(80, 60, 40), anchor="mm")
+        except Exception as text_error:
+            print(f"❌ Ошибка при добавлении текста: {text_error}")
+        
+        # Конвертируем в base64
+        buffer = BytesIO()
+        canvas.save(buffer, format='JPEG', quality=92)
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+        return f"data:image/jpeg;base64,{img_str}"
+        
+    except Exception as e:
+        print(f"❌ Ошибка при создании коллажа: {e}")
+        return ""
+
+def create_infographic(analysis: dict) -> str:
+    """Создает инфографику с статистикой"""
+    try:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+        fig.patch.set_facecolor('#fff5f0')
+        
+        # График роста популярности
+        months = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн']
+        likes_growth = [100, 150, 220, 380, 520, analysis.get('total_likes', 600)]
+        
+        ax1.plot(months, likes_growth, color='#ff6b9d', linewidth=3, marker='o', markersize=8)
+        ax1.fill_between(months, likes_growth, alpha=0.3, color='#ffb3d1')
+        ax1.set_title('Рост популярности', fontsize=14, color='#8b5a5a')
+        ax1.set_ylabel('Лайки', color='#8b5a5a')
+        ax1.grid(True, alpha=0.3)
+        
+        # Круговая диаграмма Followers/Following
+        followers = analysis.get('followers', 1000)
+        following = analysis.get('following', 500)
+        sizes = [followers, following]
+        labels = ['Подписчики', 'Подписки']
+        colors = ['#ff6b9d', '#ffd93d']
+        
+        ax2.pie(sizes, labels=labels, colors=colors, autopct='%1.0f', startangle=90)
+        ax2.set_title('Соотношение подписок', fontsize=14, color='#8b5a5a')
+        
+        plt.tight_layout()
+        
+        # Сохраняем в base64
+        buffer = BytesIO()
+        plt.savefig(buffer, format='PNG', dpi=150, bbox_inches='tight', facecolor='#fff5f0')
+        plt.close()
+        
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+        return f"data:image/png;base64,{img_str}"
+        
+    except Exception as e:
+        print(f"❌ Ошибка при создании инфографики: {e}")
+        return ""
+
+def generate_playlist_for_photo(caption: str, index: int) -> str:
+    """Генерирует плейлист для фотографии"""
+    mood_tracks = {
+        0: "Lana Del Rey - Young and Beautiful",
+        1: "The 1975 - Somebody Else", 
+        2: "Billie Eilish - lovely",
+        3: "Clairo - Pretty Girl",
+        4: "Rex Orange County - Best Friend",
+        5: "Boy Pablo - Everytime",
+        6: "Cuco - Lo Que Siento",
+        7: "Mac DeMarco - Chamber of Reflection"
+    }
     
+    # Генерируем трек на основе описания (с fallback)
+    try:
+        prompt = f"""Подбери современный dreampop/indie-трек к описанию фотографии: "{caption[:100]}..."
+        
+        Ответь в формате: "Исполнитель - Название трека"
+        Стиль: мечтательный, атмосферный, подходящий для созерцания фото.
+        """
+        
+        suggested_track = generate_text(prompt, max_tokens=50)
+        if suggested_track and len(suggested_track.strip()) > 5:
+            return suggested_track.strip()
+    except Exception as e:
+        print(f"❌ Ошибка при генерации плейлиста: {e}")
+    
+    return mood_tracks.get(index % len(mood_tracks), "Dream Valley - Sunset Memories")
+
+def create_qr_code(username: str) -> str:
+    """Создает QR-код с ссылкой на архив"""
+    try:
+        # Создаем QR-код с ссылкой
+        qr_url = f"https://instagram.com/{username}"
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr.add_data(qr_url)
+        qr.make(fit=True)
+        
+        # Создаем изображение QR-кода
+        qr_img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Конвертируем в base64
+        buffer = BytesIO()
+        qr_img.save(buffer, format='PNG')
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+        return f"data:image/png;base64,{img_str}"
+        
+    except Exception as e:
+        print(f"❌ Ошибка при создании QR-кода: {e}")
+        return ""
+
+def format_statistics_creatively(stat_name: str, value: int) -> str:
+    """Переводит статистику в креативный формат"""
+    creative_formats = {
+        'followers': f"{value:,} сердец в зрительном зале",
+        'following': f"{value:,} вдохновляющих голосов",
+        'posts': f"{value} кадров жизненного фильма", 
+        'likes': f"{value:,} моментов счастья",
+        'comments': f"{value:,} искренних слов",
+        'stories': f"{value} мгновений души"
+    }
+    return creative_formats.get(stat_name, f"{value:,}")
+
+def add_text_rhythm(text: str) -> str:
+    """Улучшает ритм текста, чередуя короткие и длинные предложения"""
+    sentences = text.split('. ')
+    improved_sentences = []
+    
+    for i, sentence in enumerate(sentences):
+        # Каждое 3-е предложение делаем цитатой
+        if i > 0 and i % 3 == 0 and len(sentence) > 30:
+            improved_sentences.append(f'<blockquote>"{sentence.strip()}."</blockquote>')
+        else:
+            improved_sentences.append(sentence.strip() + '.')
+    
+    return ' '.join(improved_sentences)
+
+def add_english_voiceover(text: str) -> str:
+    """Добавляет английские voice-over фразы"""
+    voiceover_phrases = [
+        "*moment of truth*",
+        "*pure magic*", 
+        "*breathe it in*",
+        "*frame perfect*",
+        "*golden hour*",
+        "*soul deep*",
+        "*simply beautiful*",
+        "*life in motion*"
+    ]
+    
+    # Добавляем voice-over в конец каждого второго абзаца
+    if len(text) > 100:
+        import random
+        phrase = random.choice(voiceover_phrases)
+        return f"{text} <em class='voiceover'>{phrase}</em>"
+    return text
+
+def generate_romantic_content(analysis: dict, images: list[Path]) -> dict:
+    """Генерирует романтический контент на основе РЕАЛЬНЫХ данных Instagram"""
+    
+    # Безопасное извлечение данных с fallback значениями
     username = analysis.get('username', 'Неизвестный')
     full_name = analysis.get('full_name', username)
-    bio = analysis.get('bio', 'Прекрасная душа')
-    followers = analysis.get('followers', 0)
-    following = analysis.get('following', 0)
-    posts_count = analysis.get('posts_count', 0)
+    bio = analysis.get('bio', '')
+    followers = max(0, analysis.get('followers', 0))
+    following = max(0, analysis.get('following', 0))
+    posts_count = max(0, analysis.get('posts_count', 0))
+    total_likes = max(0, analysis.get('total_likes', 0))
+    total_comments = max(0, analysis.get('total_comments', 0))
     
-    # Создаем универсальный романтический контекст без гендерных предположений
-    context = f"""
-    === ГЕРОЙ/ГЕРОИНЯ НАШЕЙ ИСТОРИИ ===
+    # Реальные данные из Instagram с проверками
+    real_captions = analysis.get('captions', [])[:10] if analysis.get('captions') else ['Прекрасный момент жизни']
+    common_hashtags = analysis.get('common_hashtags', [])[:5] if analysis.get('common_hashtags') else [('beautiful', 1), ('life', 1)]
+    mentioned_users = analysis.get('mentioned_users', [])[:5] if analysis.get('mentioned_users') else []
+    locations = analysis.get('locations', [])[:5] if analysis.get('locations') else ['Неизвестное место']
+    most_liked = analysis.get('most_liked_post')
+    most_commented = analysis.get('most_commented_post')
+    
+    # Создаем контекст на основе РЕАЛЬНЫХ данных
+    instagram_context = f"""
+    === РЕАЛЬНЫЙ ПРОФИЛЬ INSTAGRAM ===
     Имя: @{username} ({full_name})
-    О себе: "{bio}"
-    Популярность: {followers:,} людей восхищаются этой личностью
-    Подписки: {following:,} избранных аккаунтов
-    Публикаций: {posts_count} моментов жизни
+    {f"Описание: {bio}" if bio else ""}
+    Подписчики: {followers:,} человек
+    Подписки: {following:,} аккаунтов
+    Публикаций: {posts_count} постов
+    Общие лайки: {total_likes:,}
+    Общие комментарии: {total_comments:,}
     
-    === РОМАНТИЧЕСКИЕ ДЕТАЛИ ===
-    Фотографий: {len(images)} моментов счастья
-    Места: {', '.join(analysis.get('locations', [])[:3]) if analysis.get('locations') else 'волшебные уголки мира'}
+    === РЕАЛЬНЫЕ ПОДПИСИ К ПОСТАМ ===
+    {chr(10).join([f'"{caption}"' for caption in real_captions[:5] if caption and len(caption.strip()) > 0])}
+    
+    === ПОПУЛЯРНЫЕ ХЭШТЕГИ ===
+    {', '.join([f'#{hashtag[0]} ({hashtag[1]}x)' for hashtag in common_hashtags if hashtag and len(hashtag) >= 2])}
+    
+    === УПОМИНАНИЯ ДРУЗЕЙ ===
+    {', '.join([f'@{user}' for user in mentioned_users if user and len(user.strip()) > 0])}
+    
+    === ПОСЕЩЕННЫЕ МЕСТА ===
+    {', '.join([loc for loc in locations if loc and len(loc.strip()) > 0])}
+    
+    === САМЫЙ ПОПУЛЯРНЫЙ ПОСТ ===
+    {f'"{most_liked["caption"]}" - {most_liked["likes"]} лайков' if most_liked and most_liked.get("caption") else "Самые яркие моменты жизни"}
     """
     
-    # Промпты для романтического контента (универсальные)
+    # Улучшенные промпты с защитой от ошибок
     prompts = {
+        "prologue": f"""
+        Напиши пролог автора (1 страница) - почему мы создаем такие Instagram-книги.
+        
+        Расскажи:
+        - Как социальные сети стали новой формой искусства
+        - Почему каждый профиль заслуживает быть книгой
+        - Философию превращения цифровых моментов в осязаемые воспоминания
+        
+        Стиль: Вдохновляющий, философский, с английскими вставками voice-over.
+        Структура: 2-3 коротких предложения, затем 1 длинная фраза, затем цитата.
+        Максимум 500 слов.
+        """,
+        
         "title": f"""
-        Ты создаешь романтическую книгу-подарок о @{username}. 
-        Придумай элегантное романтическое название для книги о красоте и восхищении.
-        
-        СТИЛЬ: Изысканно, поэтично, универсально
-        ПРИМЕРЫ: "Ода красоте", "Портрет души", "Звезда моя"
-        
-        Ответь ТОЛЬКО названием, максимум 4 слова.
+        Создай поэтическое название для Instagram-книги @{username}.
+        Используй данные: {bio if bio else 'творческая душа'}
+        Максимум 4 слова, с намеком на кинематографичность.
         """,
         
-        "romantic_intro": f"""
-        Ты создаешь романтическую книгу о @{username}.
-        Напиши изысканное вступление (4-5 абзацев) как истинный ценитель красоты.
+        "chapter1_frame": f"""
+        Глава 1 - КАДР. Опиши визуальный стиль @{username} как кинорежиссер.
         
-        РАССКАЖИ УНИВЕРСАЛЬНО:
-        ✨ Как среди миллионов людей выделяется именно эта особенная личность
-        🌟 Что делает этого человека исключительным и прекрасным
-        💎 Как каждая деталь говорит об утончённости души
-        📖 Почему этот человек достоин книги-посвящения
+        ДАННЫЕ: {posts_count} постов, хэштеги: {', '.join([f'#{h[0]}' for h in common_hashtags[:3] if h and len(h) >= 2])}
         
-        КОНТЕКСТ: {context}
+        Структура:
+        - Кадр: как они компонуют фотографии
+        - Эмоция: какие чувства передают
+        - Урок: чему учит их визуальный язык
         
-        СТИЛЬ: Галантно, изысканно, как в исторических романах. Используй красивые метафоры.
+        Добавь режиссерские ремарки курсивом: "Cut — держите кадр так, чтобы..."
+        Максимум 800 слов.
         """,
         
-        "stats_admiration": f"""
-        Ты восхищаешься популярностью @{username}.
-        Напиши элегантный анализ социального влияния (3 абзаца).
+        "chapter2_emotion": f"""
+        Глава 2 - ЭМОЦИЯ. Анализ эмоционального слоя @{username}.
         
-        ВОСХИТИСЬ ЦИФРАМИ:
-        👑 {followers:,} подписчиков - целая армия поклонников
-        📱 {posts_count} публикаций - галерея моментов красоты
-        🌟 Как эти цифры отражают харизму и магнетизм
+        ПОДПИСИ: {chr(10).join([f'"{caption[:100]}..."' for caption in real_captions[:3] if caption and len(caption.strip()) > 0])}
         
-        СТИЛЬ: Восхищённо, как ценитель таланта оценивает влияние в обществе.
+        Структура по подпунктам:
+        - Кадр: какие эмоции видны на фото
+        - Эмоция: как подписи раскрывают внутренний мир  
+        - Урок: как найти красоту в повседневности
+        
+        Чередуй короткие и длинные предложения. Добавь voice-over на английском.
+        Максимум 800 слов.
         """,
         
-        "beauty_details": f"""
-        Ты - поэт и ценитель красоты. Опиши прекрасные качества @{username} как произведение искусства (4 абзаца).
+        "chapter3_journey": f"""
+        Глава 3 - ПУТЕШЕСТВИЕ. География души через локации.
         
-        ВОСПЕВАЙ ДЕТАЛИ:
-        👁️ Взгляд - что в нём читается?
-        😊 Улыбка - как она преображает пространство?
-        💫 Стиль - как выбираются образы?
-        ✨ Естественность - что делает живым?
+        МЕСТА: {', '.join([loc for loc in locations if loc and len(loc.strip()) > 0]) if any(loc and len(loc.strip()) > 0 for loc in locations) else 'удивительные места'}
         
-        КОНТЕКСТ: {context}
-        
-        СТИЛЬ: Поэтично, как ценитель искусства описывает шедевр.
+        Подпункты:
+        - Кадр: как места формируют кадр
+        - Эмоция: что ищет душа в путешествиях
+        - Урок: как география влияет на характер
+        Максимум 800 слов.
         """,
         
-        "lifestyle_admiration": f"""
-        Создай восхищённый рассказ о стиле жизни @{username} (4 абзаца).
+        "chapter4_community": f"""
+        Глава 4 - СООБЩЕСТВО. Связи через экран.
         
-        ВОСХИТИСЬ ОБРАЗОМ ЖИЗНИ:
-        🌍 Места, которые выбираются для посещения
-        📸 Моменты, которые считаются важными
-        🎨 Эстетика мира этого человека
-        💝 Что это говорит о характере
+        ДАННЫЕ: {followers:,} подписчиков, упоминания {', '.join(mentioned_users[:3]) if mentioned_users else 'близких друзей'}
         
-        СТИЛЬ: Как ценитель утончённости восхищается образом жизни.
+        - Кадр: как выглядит цифровое сообщество
+        - Эмоция: теплота человеческих связей онлайн
+        - Урок: построение подлинных отношений в сети
+        Максимум 800 слов.
         """,
         
-        "photo_stories": f"""
-        Создай 15 коротких поэтических подписей к фотографиям @{username} 
-        (по 1-2 предложения каждая).
+        "chapter5_legacy": f"""
+        Глава 5 - НАСЛЕДИЕ. Что останется от цифрового следа.
         
-        СОЗДАЙ ПОДПИСИ:
-        💖 Каждая фотография - стихотворение в кадре
-        ✨ Мгновения, достойные картинной галереи
-        🌸 Естественная грация в каждом движении
-        😍 Кадры, которые останавливают время
+        ИТОГИ: {posts_count} постов = жизненная история
         
-        Напиши 15 подписей, разделенных символом "|". Например:
-        "Взгляд, который пишет стихи в душе | Улыбка, затмевающая рассвет | ..."
-        """,
+        - Кадр: как посты складываются в биографию
+        - Эмоция: ценность сохраненных моментов
+        - Урок: создание осмысленного цифрового наследия
         
-        "romantic_wishes": f"""
-        Напиши романтические пожелания для @{username} (4 абзаца).
-        
-        ПОЖЕЛАЙ С ЛЮБОВЬЮ:
-        🌟 Чтобы красота всегда сияла
-        💖 Чтобы жизнь дарила только лучшее
-        🦋 Чтобы мечты становились реальностью
-        🌺 Чтобы всегда знать свою ценность
-        
-        СТИЛЬ: Искренне, с пожеланиями счастья.
-        """,
-        
-        "final_dedication": f"""
-        Напиши финальное посвящение для @{username} (3-4 абзаца).
-        
-        ЗАВЕРШИ ЭЛЕГАНТНО:
-        💕 Благодарность за вдохновение
-        🌟 Признание исключительности
-        ✨ Уверенность в прекрасном будущем
-        💝 Подпись от всего сердца
-        
-        СТИЛЬ: Торжественно и трогательно, как посвящение в книге.
+        Финальная режиссерская ремарка о вечности мгновений.
+        Максимум 800 слов.
         """
     }
     
-    # Генерируем весь контент
+    # Генерируем контент с улучшенной обработкой ошибок
     content = {}
     for key, prompt in prompts.items():
-        print(f"💕 Создаем {key}...")
-        generated_text = generate_text(prompt, max_tokens=1000)
-        
-        if generated_text is None or generated_text == "":
-            # Резервный романтический текст
-            fallback_texts = {
-                "title": "Ода Твоей Красоте",
-                "romantic_intro": f"В мире, где красота стала редкостью, @{username} сияет как драгоценный бриллиант. Каждая публикация - это произведение искусства, каждый взгляд - поэзия, каждая улыбка - мелодия для души. Как истинный ценитель прекрасного, я не мог не создать эту книгу-посвящение удивительному человеку, который умеет быть собой в мире масок.",
-                "stats_admiration": f"Цифры говорят сами за себя: {followers:,} человек выбрали следить за этой жизнью. Это не просто подписчики - это свидетели красоты, ценители искусства жить красиво. {posts_count} публикаций создают галерею моментов, каждый из которых достоин восхищения.",
-                "beauty_details": f"Красота @{username} многогранна, как драгоценный камень. В этом взгляде читается глубина океана, в улыбке - тепло солнца. Умение быть элегантным и естественным одновременно - это истинное искусство.",
-                "lifestyle_admiration": f"Стиль жизни @{username} отражает утончённую натуру. Места, которые выбираются, моменты, которые считаются важными - всё говорит о человеке с изысканным вкусом и глубоким пониманием красоты.",
-                "photo_stories": "Мгновение совершенства | Взгляд, пишущий стихи | Улыбка, дарящая надежду | Естественность как искусство | Красота без фильтров | Момент чистой радости | Элегантность в движении | Свет в глазах | Грация в каждом жесте | Искренность как украшение | Красота изнутри | Кадр для вечности | Поэзия момента | Совершенство в простоте | Магия обычного дня",
-                "romantic_wishes": f"Желаю @{username} всегда оставаться таким же искренним и прекрасным. Пусть жизнь дарит только самые яркие краски, а каждый день приносит новые поводы для улыбки. Пусть красота души всегда находит отражение в окружающем мире.",
-                "final_dedication": f"Эта книга - скромная дань восхищения исключительному человеку. @{username}, спасибо за то, что делаешь мир ярче своим присутствием. Пусть эти страницы напоминают о том, какой ты особенный. С глубоким уважением и восхищением."
+        print(f"💕 Создаем {key} с защитой от ошибок...")
+        try:
+            generated_text = generate_text(prompt, max_tokens=1500)
+            
+            if generated_text and len(generated_text.strip()) > 20:
+                # Применяем улучшения ритма и voice-over
+                generated_text = add_text_rhythm(generated_text)
+                generated_text = add_english_voiceover(generated_text)
+                content[key] = generated_text
+            else:
+                raise ValueError("Пустой или слишком короткий ответ от AI")
+                
+        except Exception as e:
+            print(f"❌ Ошибка при генерации {key}: {e}")
+            # Используем улучшенные резервные тексты
+            fallbacks = {
+                "prologue": f"""В эпоху цифровых историй каждый профиль Instagram становится уникальной книгой. Пиксели превращаются в память. Лайки становятся наследием. <blockquote>"Мы живем в мире, где каждый момент может стать искусством."</blockquote> *Digital soul meets paper heart.* Эта книга — мост между виртуальным и вещественным, между мгновением и вечностью.""",
+                
+                "title": f"Кадры жизни @{username}",
+                
+                "chapter1_frame": f"""*Cut — камера ловит свет в глазах @{username}.* Каждый из {posts_count if posts_count > 0 else '1'} постов — это режиссерское решение. Кадр говорит больше слов. Композиция рассказывает истории. <blockquote>"Великая фотография — это та, что заставляет остановиться и почувствовать."</blockquote> *Frame perfect.* Урок: в каждом кадре живет целая вселенная.""",
+                
+                "chapter2_emotion": f"""Подписи @{username} — это поэзия современности. Короткие строки. Длинные размышления о жизни. <blockquote>"Слова под фотографией — это окно в душу автора."</blockquote> *Pure emotion.* Каждая подпись раскрывает тайны сердца.""",
+                
+                "chapter3_journey": f"""География @{username}: {', '.join(locations[:2]) if locations and any(loc.strip() for loc in locations) else 'неизведанные тропы'}. Каждое место оставляет отпечаток в душе. Кадр меняется с широтой. <blockquote>"Мы путешествуем, чтобы найти себя."</blockquote> *Wanderlust in pixels.*""",
+                
+                "chapter4_community": f"""{format_statistics_creatively('followers', followers)} образуют уникальную аудиторию. Цифровая близость рождает настоящие чувства. Каждый лайк — связь. <blockquote>"Технологии лучше всего работают, когда объединяют сердца."</blockquote> *Connection beyond screens.*""",
+                
+                "chapter5_legacy": f"""Что останется от наших Instagram-историй? {posts_count if posts_count > 0 else 'Каждый'} пост — капсула времени. Цифровое наследие обретает физическую форму. <blockquote>"Мы создаем будущее из пикселей прошлого."</blockquote> *Forever captured.* *Final cut — и камера отъезжает, оставляя вечность мгновений...*"""
             }
-            generated_text = fallback_texts.get(key, "Прекрасные слова о замечательном человеке")
-        
-        content[key] = generated_text
+            content[key] = fallbacks.get(key, "Прекрасная история...")
     
     return content
 
 def create_romantic_book_html(content: dict, analysis: dict, images: list[Path]) -> str:
-    """Создает HTML для романтической книги"""
+    """Создает HTML книгу в стиле настоящей печатной книги с белым фоном"""
     
     username = analysis.get('username', 'Неизвестный')
     full_name = analysis.get('full_name', username)
@@ -325,828 +877,443 @@ def create_romantic_book_html(content: dict, analysis: dict, images: list[Path])
     bio = analysis.get('bio', '')
     verified = analysis.get('verified', False)
     
-    # Конвертируем изображения в base64 (если есть)
-    image_data = []
-    for i, img_path in enumerate(images[:15]):  # Максимум 15 фотографий
+    # Обрабатываем изображения в классическом стиле
+    processed_images = []
+    
+    for i, img_path in enumerate(images[:8]):
         if img_path.exists():
-            base64_img = convert_image_to_base64(img_path, style="romantic")
-            if base64_img:
-                image_data.append(base64_img)
+            try:
+                with Image.open(img_path) as img:
+                    # Простая обработка для книжного качества
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+                    
+                    # Изменяем размер для книжного формата
+                    img.thumbnail((800, 600), Image.Resampling.LANCZOS)
+                    
+                    # Легкое улучшение контраста для печати
+                    enhancer = ImageEnhance.Contrast(img)
+                    img = enhancer.enhance(1.05)
+                    
+                    # Конвертируем в base64
+                    buffer = BytesIO()
+                    img.save(buffer, format='JPEG', quality=95)
+                    img_str = base64.b64encode(buffer.getvalue()).decode()
+                    processed_images.append(f"data:image/jpeg;base64,{img_str}")
+            except Exception as e:
+                print(f"❌ Ошибка при обработке изображения {img_path}: {e}")
     
-    print(f"💕 Обработано {len(image_data)} изображений для книги")
+    # Реальные данные для любовной истории
+    real_captions = analysis.get('captions', ['Прекрасный момент'])[:6]
+    locations = analysis.get('locations', ['Неизвестное место'])[:5]
     
-    # Получаем подписи к фотографиям
-    photo_stories = content.get('photo_stories', '').split('|') if content.get('photo_stories') else []
-    default_captions = [
-        "Мгновение совершенства",
-        "Взгляд, пишущий стихи", 
-        "Улыбка, дарящая надежду",
-        "Естественность как искусство",
-        "Красота без фильтров",
-        "Момент чистой радости",
-        "Элегантность в движении",
-        "Свет в глазах",
-        "Грация в каждом жесте",
-        "Искренность как украшение",
-        "Красота изнутри",
-        "Кадр для вечности",
-        "Поэзия момента",
-        "Совершенство в простоте",
-        "Магия обычного дня"
-    ]
-    
-    # Создаем интегрированные страницы с фото и текстом (если есть фото)
-    integrated_pages = ""
-    
-    if image_data:
-        # Разбиваем фотографии на группы для страниц
-        photos_per_page = 3
-        for page_num in range(0, min(len(image_data), 15), photos_per_page):
-            page_photos = image_data[page_num:page_num + photos_per_page]
-            
-            photo_gallery = ""
-            for i, img_base64 in enumerate(page_photos):
-                global_index = page_num + i
-                caption = photo_stories[global_index].strip() if global_index < len(photo_stories) else default_captions[global_index % len(default_captions)]
-                photo_gallery += f'''
-                <div class="romantic-photo-frame">
-                    <div class="photo-wrapper">
-                        <img src="{img_base64}" alt="Прекрасный момент {global_index+1}">
-                        <div class="photo-glow"></div>
-                    </div>
-                    <div class="photo-caption">{caption}</div>
-                    <div class="frame-ornament">❦</div>
-                </div>
-                '''
-            
-            # Выбираем текст для страницы
-            if page_num == 0:
-                page_text = content.get('beauty_details', 'Красота в каждой детали...')
-                page_title = "Портрет Души"
-            elif page_num == 3:
-                page_text = content.get('lifestyle_admiration', 'Стиль жизни как искусство...')
-                page_title = "Эстетика Жизни"
-            elif page_num == 6:
-                page_text = content.get('romantic_wishes', 'Пожелания от всего сердца...')
-                page_title = "Мечты и Пожелания"
-            else:
-                page_text = "Каждый момент, запечатлённый в этих кадрах, говорит о красоте души и утончённости вкуса. Эти фотографии - не просто снимки, а окна в мир полный гармонии и эстетики."
-                page_title = "Моменты Красоты"
-            
-            integrated_pages += f'''
-            <div class="romantic-page integrated-page">
-                <div class="page-background"></div>
-                <h2 class="page-title">{page_title}</h2>
-                <div class="integrated-content">
-                    <div class="text-section">
-                        <div class="romantic-text">{page_text}</div>
-                        <div class="text-ornament">✧ ✦ ✧</div>
-                    </div>
-                    <div class="photos-section">
-                        {photo_gallery}
-                    </div>
-                </div>
-            </div>
-            '''
-    else:
-        # Если нет фото, создаем текстовые страницы
-        text_pages = [
-            ("Портрет Души", content.get('beauty_details', 'Красота души проявляется в каждом жесте, каждом взгляде, каждом слове. Это особенный человек, который умеет находить прекрасное в обычном и делиться этой красотой с миром.')),
-            ("Эстетика Жизни", content.get('lifestyle_admiration', 'Стиль жизни говорит о человеке больше, чем слова. Выбор моментов, которые считаются важными, места, которые притягивают - всё это создаёт портрет утончённой души.')),
-            ("Мечты и Пожелания", content.get('romantic_wishes', 'Пусть каждый день приносит новые поводы для радости, пусть мечты находят своё воплощение, а красота души всегда находит отражение в окружающем мире.'))
-        ]
-        
-        for page_title, page_text in text_pages:
-            integrated_pages += f'''
-            <div class="romantic-page text-only-page">
-                <div class="page-background"></div>
-                <h2 class="page-title">{page_title}</h2>
-                <div class="romantic-text">{page_text}</div>
-                <div class="decorative-element">✧ ✦ ✧</div>
-            </div>
-            '''
-    
-    # Создаем HTML
+    # HTML книги в классическом стиле
     html = f"""
     <!DOCTYPE html>
     <html lang="ru">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>{content.get('title', 'Ода Твоей Красоте')}</title>
-        <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Dancing+Script:wght@400;700&family=Libre+Baskerville:wght@400;700&family=Great+Vibes&display=swap" rel="stylesheet">
+        <title>Книга о @{username}</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Playfair+Display:wght@400;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+        
         <style>
-            * {{
+        body {{
+            font-family: 'Crimson Text', serif;
+            font-size: 12pt;
+            line-height: 1.8;
+            color: #1a1a1a;
+            background: white;
+            margin: 0;
+            padding: 0;
+            max-width: 800px;
+            margin: 0 auto;
+        }}
+        
+        .page {{
+            min-height: 90vh;
+            padding: 3cm 2.5cm;
+            margin-bottom: 2cm;
+            page-break-after: always;
+            background: white;
+            border: none;
+        }}
+        
+        .page:last-child {{
+            page-break-after: auto;
+        }}
+        
+        h1 {{
+            font-family: 'Playfair Display', serif;
+            font-size: 28pt;
+            text-align: center;
+            margin: 4cm 0 2cm 0;
+            color: #1a1a1a;
+            font-weight: 400;
+            letter-spacing: 1px;
+        }}
+        
+        h2 {{
+            font-family: 'Playfair Display', serif;
+            font-size: 18pt;
+            color: #1a1a1a;
+            margin: 3cm 0 1.5cm 0;
+            text-align: left;
+            font-weight: 400;
+        }}
+        
+        h3 {{
+            font-family: 'Playfair Display', serif;
+            font-size: 14pt;
+            color: #1a1a1a;
+            margin: 2cm 0 1cm 0;
+            font-weight: 400;
+        }}
+        
+        .chapter-number {{
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 14pt;
+            color: #666;
+            text-align: center;
+            margin-bottom: 1cm;
+            font-style: italic;
+        }}
+        
+        p {{
+            margin: 0 0 1.5em 0;
+            text-align: justify;
+            text-indent: 2em;
+        }}
+        
+        .first-paragraph {{
+            text-indent: 0;
+            font-size: 13pt;
+        }}
+        
+        .drop-cap {{
+            float: left;
+            font-family: 'Playfair Display', serif;
+            font-size: 72pt;
+            line-height: 60pt;
+            padding-right: 8pt;
+            margin-top: 4pt;
+            color: #1a1a1a;
+        }}
+        
+        blockquote {{
+            font-style: italic;
+            margin: 2em 3em;
+            padding: 0;
+            border: none;
+            text-align: center;
+            font-size: 11pt;
+            color: #444;
+        }}
+        
+        .quote-author {{
+            text-align: right;
+            margin-top: 1em;
+            font-size: 10pt;
+            color: #666;
+        }}
+        
+        .photo-page {{
+            text-align: center;
+            page-break-inside: avoid;
+        }}
+        
+        .photo {{
+            margin: 2cm 0 1.5cm 0;
+            text-align: center;
+        }}
+        
+        .photo img {{
+            max-width: 100%;
+            max-height: 400px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }}
+        
+        .photo-caption {{
+            font-family: 'Cormorant Garamond', serif;
+            font-style: italic;
+            font-size: 11pt;
+            color: #666;
+            margin-top: 1cm;
+            text-align: center;
+        }}
+        
+        .photo-inline {{
+            float: right;
+            margin: 0 0 1em 2em;
+            width: 300px;
+        }}
+        
+        .photo-inline img {{
+            width: 100%;
+            border: 1px solid #ddd;
+            padding: 8px;
+            background: white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+        }}
+        
+        .stats-elegant {{
+            margin: 2cm 0;
+            text-align: center;
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 11pt;
+            color: #666;
+        }}
+        
+        .dedication {{
+            text-align: center;
+            font-style: italic;
+            margin: 4cm 0;
+            font-size: 12pt;
+            color: #666;
+        }}
+        
+        .chapter-separator {{
+            text-align: center;
+            margin: 3cm 0;
+            font-size: 14pt;
+            color: #ccc;
+        }}
+        
+        .page-number {{
+            position: absolute;
+            bottom: 2cm;
+            right: 2.5cm;
+            font-size: 10pt;
+            color: #999;
+        }}
+        
+        @media print {{
+            body {{
                 margin: 0;
                 padding: 0;
-                box-sizing: border-box;
             }}
-            
-            body {{
-                font-family: 'Libre Baskerville', serif;
-                line-height: 1.8;
-                color: #2d1b14;
-                background: 
-                    linear-gradient(135deg, #fdf6f0 0%, #f8f2e4 25%, #f5ede0 50%, #f2e8dc 75%, #f0e5d8 100%),
-                    radial-gradient(circle at 20% 80%, rgba(218, 165, 32, 0.1) 0%, transparent 50%),
-                    radial-gradient(circle at 80% 20%, rgba(139, 69, 19, 0.1) 0%, transparent 50%);
-                min-height: 100vh;
-                position: relative;
-            }}
-            
-            body::before {{
-                content: '';
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="10" cy="20" r="1" fill="rgba(218,165,32,0.1)"/><circle cx="90" cy="80" r="1.5" fill="rgba(139,69,19,0.1)"/><circle cx="30" cy="70" r="0.8" fill="rgba(218,165,32,0.1)"/><circle cx="70" cy="30" r="1.2" fill="rgba(139,69,19,0.1)"/></svg>') repeat;
-                pointer-events: none;
-                z-index: 0;
-            }}
-            
-            .book-container {{
-                max-width: 1000px;
-                margin: 0 auto;
-                background: 
-                    linear-gradient(135deg, #fefdfb 0%, #faf7f2 100%),
-                    radial-gradient(circle at 50% 50%, rgba(255,255,255,0.8) 0%, transparent 70%);
-                box-shadow: 
-                    inset 0 0 0 1px rgba(218, 165, 32, 0.3),
-                    inset 0 0 0 8px #f5f0e8,
-                    inset 0 0 0 16px rgba(139, 69, 19, 0.1),
-                    0 0 0 4px #e8dcc8,
-                    0 0 0 8px rgba(139, 69, 19, 0.2),
-                    0 30px 80px rgba(45, 27, 20, 0.4);
-                min-height: 100vh;
-                position: relative;
-                border: 3px solid #d4c4a8;
-                z-index: 1;
-            }}
-            
-            .book-container::before {{
-                content: '';
-                position: absolute;
-                top: 20px;
-                left: 20px;
-                right: 20px;
-                bottom: 20px;
-                border: 2px double #daa520;
-                border-radius: 12px;
-                pointer-events: none;
-                z-index: 0;
-            }}
-            
-            .romantic-page {{
-                padding: 80px 60px;
-                min-height: 100vh;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                position: relative;
+            .page {{
                 page-break-after: always;
-                z-index: 2;
+                margin: 0;
+                box-shadow: none;
             }}
-            
-            .page-background {{
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: 
-                    radial-gradient(circle at 10% 90%, rgba(218, 165, 32, 0.05) 0%, transparent 40%),
-                    radial-gradient(circle at 90% 10%, rgba(139, 69, 19, 0.05) 0%, transparent 40%);
-                pointer-events: none;
-                z-index: -1;
-            }}
-            
-            .cover-page {{
-                background: 
-                    linear-gradient(135deg, #8b4513 0%, #a0522d 25%, #cd853f 50%, #daa520 75%, #b8860b 100%),
-                    radial-gradient(circle at 30% 70%, rgba(255,255,255,0.1) 0%, transparent 50%);
-                color: #fefdfb;
-                text-align: center;
-                position: relative;
-                overflow: hidden;
-            }}
-            
-            .cover-page::before {{
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><path d="M100 20 L120 60 L80 60 Z" fill="rgba(255,255,255,0.05)"/><path d="M50 100 L70 140 L30 140 Z" fill="rgba(255,255,255,0.03)"/><path d="M150 100 L170 140 L130 140 Z" fill="rgba(255,255,255,0.03)"/></svg>') repeat;
-                animation: sparkle 20s linear infinite;
-                pointer-events: none;
-            }}
-            
-            @keyframes sparkle {{
-                0% {{ transform: translateX(0) translateY(0); }}
-                100% {{ transform: translateX(-200px) translateY(-200px); }}
-            }}
-            
-            .cover-page::after {{
-                content: '';
-                position: absolute;
-                top: 40px;
-                left: 40px;
-                right: 40px;
-                bottom: 40px;
-                border: 4px double #ffd700;
-                border-radius: 16px;
-                box-shadow: 
-                    inset 0 0 0 8px rgba(255,215,0,0.3),
-                    0 0 30px rgba(255,215,0,0.5);
-                pointer-events: none;
-                z-index: 1;
-            }}
-            
-            .cover-title {{
-                font-family: 'Playfair Display', serif;
-                font-size: 4.8em;
-                font-weight: 700;
-                margin-bottom: 30px;
-                text-shadow: 
-                    3px 3px 0px rgba(0,0,0,0.3),
-                    6px 6px 10px rgba(0,0,0,0.2),
-                    0 0 20px rgba(255,215,0,0.5);
-                position: relative;
-                z-index: 2;
-                letter-spacing: 3px;
-                background: linear-gradient(45deg, #fff, #ffd700, #fff);
-                -webkit-background-clip: text;
-                background-clip: text;
-                -webkit-text-fill-color: transparent;
-                filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));
-            }}
-            
-            .cover-subtitle {{
-                font-family: 'Great Vibes', cursive;
-                font-size: 2.8em;
-                margin-bottom: 40px;
-                opacity: 0.95;
-                position: relative;
-                z-index: 2;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-            }}
-            
-            .cover-names {{
-                font-family: 'Playfair Display', serif;
-                font-size: 1.8em;
-                margin-top: 60px;
-                position: relative;
-                z-index: 2;
-            }}
-            
-            .verified-badge {{
-                display: inline-block;
-                background: linear-gradient(45deg, #ffd700, #ffed4e);
-                color: #8b4513;
-                padding: 6px 15px;
-                border-radius: 20px;
-                font-size: 0.7em;
-                margin-left: 12px;
-                vertical-align: middle;
-                font-weight: bold;
-                box-shadow: 0 4px 15px rgba(255,215,0,0.4);
-                border: 2px solid rgba(255,255,255,0.3);
-            }}
-            
-            .stats-page {{
-                background: linear-gradient(135deg, 
-                    rgba(254, 253, 251, 0.95) 0%, 
-                    rgba(248, 242, 228, 0.8) 25%,
-                    rgba(245, 237, 224, 0.9) 75%,
-                    rgba(240, 229, 216, 0.95) 100%);
-                text-align: center;
-                position: relative;
-            }}
-            
-            .stats-container {{
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                gap: 50px;
-                margin: 60px 0;
-            }}
-            
-            .stat-item {{
-                background: 
-                    linear-gradient(135deg, #fefdfb 0%, #f8f5f0 100%),
-                    radial-gradient(circle at 50% 50%, rgba(218,165,32,0.1) 0%, transparent 70%);
-                padding: 50px 25px;
-                border-radius: 20px;
-                box-shadow: 
-                    0 0 0 3px rgba(218, 165, 32, 0.2),
-                    0 15px 40px rgba(139, 69, 19, 0.3),
-                    inset 0 0 20px rgba(255,255,255,0.8);
-                transition: all 0.4s ease;
-                border: 2px solid rgba(218, 165, 32, 0.3);
-                position: relative;
-                overflow: hidden;
-            }}
-            
-            .stat-item::before {{
-                content: '';
-                position: absolute;
-                top: -2px;
-                left: -2px;
-                right: -2px;
-                bottom: -2px;
-                background: linear-gradient(45deg, #daa520, #8b4513, #daa520);
-                border-radius: 20px;
-                z-index: -1;
-                opacity: 0;
-                transition: opacity 0.4s ease;
-            }}
-            
-            .stat-item:hover {{
-                transform: translateY(-12px) scale(1.02);
-                box-shadow: 
-                    0 0 0 3px rgba(218, 165, 32, 0.4),
-                    0 25px 60px rgba(139, 69, 19, 0.4),
-                    inset 0 0 30px rgba(255,255,255,0.9);
-            }}
-            
-            .stat-item:hover::before {{
-                opacity: 1;
-            }}
-            
-            .stat-number {{
-                font-family: 'Playfair Display', serif;
-                font-size: 3.5em;
-                font-weight: 700;
-                color: #8b4513;
-                margin-bottom: 15px;
-                text-shadow: 1px 1px 3px rgba(0,0,0,0.1);
-                position: relative;
-                z-index: 1;
-            }}
-            
-            .stat-label {{
-                font-family: 'Dancing Script', cursive;
-                font-size: 1.6em;
-                color: #a0522d;
-                text-transform: capitalize;
-                font-weight: 600;
-                position: relative;
-                z-index: 1;
-            }}
-            
-            .bio-section {{
-                background: 
-                    linear-gradient(135deg, rgba(254, 253, 251, 0.95) 0%, rgba(248, 245, 240, 0.8) 100%),
-                    radial-gradient(circle at 30% 70%, rgba(218,165,32,0.1) 0%, transparent 60%);
-                padding: 40px;
-                border-radius: 20px;
-                margin: 50px 0;
-                border-left: 6px solid #daa520;
-                font-style: italic;
-                font-size: 1.4em;
-                color: #2d1b14;
-                box-shadow: 
-                    0 10px 30px rgba(139, 69, 19, 0.2),
-                    inset 0 0 20px rgba(255,255,255,0.7);
-                position: relative;
-            }}
-            
-            .bio-section::before {{
-                content: '"';
-                font-family: 'Playfair Display', serif;
-                font-size: 4em;
-                color: rgba(218, 165, 32, 0.3);
-                position: absolute;
-                top: -10px;
-                left: 20px;
-                line-height: 1;
-            }}
-            
-            .bio-section::after {{
-                content: '"';
-                font-family: 'Playfair Display', serif;
-                font-size: 4em;
-                color: rgba(218, 165, 32, 0.3);
-                position: absolute;
-                bottom: -30px;
-                right: 20px;
-                line-height: 1;
-            }}
-            
-            .page-title {{
-                font-family: 'Playfair Display', serif;
-                font-size: 4em;
-                color: #8b4513;
-                text-align: center;
-                margin-bottom: 60px;
-                font-weight: 700;
-                position: relative;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-            }}
-            
-            .page-title::before {{
-                content: '';
-                position: absolute;
-                top: -20px;
-                left: 50%;
-                transform: translateX(-50%);
-                width: 80px;
-                height: 4px;
-                background: linear-gradient(90deg, transparent, #daa520, transparent);
-                border-radius: 2px;
-            }}
-            
-            .page-title::after {{
-                content: '';
-                position: absolute;
-                bottom: -25px;
-                left: 50%;
-                transform: translateX(-50%);
-                width: 120px;
-                height: 3px;
-                background: linear-gradient(90deg, transparent, #daa520, transparent);
-                border-radius: 2px;
-            }}
-            
-            .romantic-text {{
-                font-family: 'Libre Baskerville', serif;
-                font-size: 1.4em;
-                line-height: 2;
-                text-align: justify;
-                color: #2d1b14;
-                margin-bottom: 30px;
-                text-indent: 3em;
-                position: relative;
-            }}
-            
-            .romantic-text::first-letter {{
-                font-family: 'Playfair Display', serif;
-                font-size: 3.5em;
-                font-weight: 700;
-                float: left;
-                line-height: 0.8;
-                margin: 8px 8px 0 0;
-                color: #8b4513;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-            }}
-            
-            .integrated-page {{
-                background: linear-gradient(135deg, 
-                    rgba(254, 253, 251, 0.98) 0%, 
-                    rgba(250, 247, 242, 0.95) 50%,
-                    rgba(245, 240, 235, 0.98) 100%);
-            }}
-            
-            .text-only-page {{
-                background: linear-gradient(135deg, 
-                    rgba(254, 253, 251, 0.98) 0%, 
-                    rgba(248, 245, 240, 0.95) 100%);
-                text-align: center;
-            }}
-            
-            .integrated-content {{
-                display: grid;
-                grid-template-columns: 1.3fr 0.7fr;
-                gap: 60px;
-                align-items: start;
-            }}
-            
-            .text-section {{
-                padding-right: 30px;
-                position: relative;
-            }}
-            
-            .text-ornament {{
-                text-align: center;
-                font-size: 2.2em;
-                color: #daa520;
-                margin: 40px 0;
-                letter-spacing: 15px;
-                opacity: 0.7;
-            }}
-            
-            .photos-section {{
-                display: flex;
-                flex-direction: column;
-                gap: 35px;
-                position: relative;
-            }}
-            
-            .romantic-photo-frame {{
-                position: relative;
-                background: 
-                    linear-gradient(135deg, #fefdfb 0%, #f8f5f0 100%);
-                padding: 20px;
-                border-radius: 15px;
-                box-shadow: 
-                    0 0 0 4px rgba(218, 165, 32, 0.2),
-                    0 0 0 8px rgba(255, 255, 255, 0.8),
-                    0 0 0 12px rgba(218, 165, 32, 0.1),
-                    0 20px 40px rgba(139, 69, 19, 0.3);
-                transition: all 0.5s ease;
-                border: 3px solid rgba(218, 165, 32, 0.3);
-                overflow: hidden;
-            }}
-            
-            .romantic-photo-frame::before {{
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: 
-                    linear-gradient(45deg, transparent 30%, rgba(255,215,0,0.1) 50%, transparent 70%),
-                    radial-gradient(circle at 20% 80%, rgba(218,165,32,0.1) 0%, transparent 50%);
-                pointer-events: none;
-                z-index: 1;
-            }}
-            
-            .romantic-photo-frame:hover {{
-                transform: translateY(-8px) scale(1.02);
-                box-shadow: 
-                    0 0 0 4px rgba(218, 165, 32, 0.4),
-                    0 0 0 8px rgba(255, 255, 255, 0.9),
-                    0 0 0 12px rgba(218, 165, 32, 0.2),
-                    0 30px 60px rgba(139, 69, 19, 0.4);
-            }}
-            
-            .photo-wrapper {{
-                position: relative;
-                border-radius: 10px;
-                overflow: hidden;
-                z-index: 2;
-            }}
-            
-            .photo-wrapper img {{
-                width: 100%;
-                height: 220px;
-                object-fit: cover;
-                border-radius: 10px;
-                display: block;
-                filter: sepia(5%) saturate(1.1) brightness(1.05);
-                transition: all 0.4s ease;
-            }}
-            
-            .romantic-photo-frame:hover .photo-wrapper img {{
-                filter: sepia(8%) saturate(1.2) brightness(1.1);
-                transform: scale(1.02);
-            }}
-            
-            .photo-glow {{
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: 
-                    radial-gradient(circle at 30% 30%, rgba(255,215,0,0.1) 0%, transparent 50%),
-                    linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 50%);
-                pointer-events: none;
-                opacity: 0;
-                transition: opacity 0.4s ease;
-            }}
-            
-            .romantic-photo-frame:hover .photo-glow {{
-                opacity: 1;
-            }}
-            
-            .photo-caption {{
-                padding: 15px 5px;
-                font-family: 'Dancing Script', cursive;
-                font-size: 1.3em;
-                color: #8b4513;
-                text-align: center;
-                font-weight: 600;
-                position: relative;
-                z-index: 2;
-                min-height: 50px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }}
-            
-            .frame-ornament {{
-                position: absolute;
-                bottom: 5px;
-                right: 15px;
-                font-size: 1.5em;
-                color: rgba(218, 165, 32, 0.5);
-                z-index: 2;
-            }}
-            
-            .intro-page {{
-                background: linear-gradient(135deg, 
-                    rgba(254, 253, 251, 0.95) 0%, 
-                    rgba(248, 245, 240, 0.9) 50%,
-                    rgba(245, 237, 224, 0.95) 100%);
-            }}
-            
-            .quote-page {{
-                background: 
-                    linear-gradient(135deg, #8b4513 0%, #a0522d 25%, #cd853f 50%, #daa520 75%, #b8860b 100%),
-                    radial-gradient(circle at 70% 30%, rgba(255,255,255,0.1) 0%, transparent 50%);
-                color: #fefdfb;
-                text-align: center;
-                position: relative;
-                overflow: hidden;
-            }}
-            
-            .quote-page::before {{
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="30" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="80" cy="70" r="1.5" fill="rgba(255,255,255,0.1)"/><circle cx="50" cy="20" r="0.8" fill="rgba(255,255,255,0.1)"/></svg>') repeat;
-                animation: twinkle 15s ease-in-out infinite;
-                pointer-events: none;
-            }}
-            
-            @keyframes twinkle {{
-                0%, 100% {{ opacity: 0.3; }}
-                50% {{ opacity: 0.8; }}
-            }}
-            
-            .quote-page::after {{
-                content: '';
-                position: absolute;
-                top: 60px;
-                left: 60px;
-                right: 60px;
-                bottom: 60px;
-                border: 3px solid rgba(255, 215, 0, 0.6);
-                border-radius: 12px;
-                box-shadow: 
-                    inset 0 0 0 8px rgba(255,215,0,0.2),
-                    0 0 40px rgba(255,215,0,0.4);
-                pointer-events: none;
-                z-index: 1;
-            }}
-            
-            .quote-text {{
-                font-family: 'Playfair Display', serif;
-                font-size: 3.8em;
-                font-weight: 700;
-                margin-bottom: 50px;
-                text-shadow: 
-                    3px 3px 0px rgba(0,0,0,0.3),
-                    6px 6px 15px rgba(0,0,0,0.2);
-                position: relative;
-                z-index: 2;
-                line-height: 1.3;
-                font-style: italic;
-            }}
-            
-            .final-page {{
-                background: linear-gradient(135deg, 
-                    rgba(254, 253, 251, 0.98) 0%, 
-                    rgba(248, 245, 240, 0.95) 50%,
-                    rgba(245, 237, 224, 0.98) 100%);
-                text-align: center;
-            }}
-            
-            .final-message {{
-                font-family: 'Libre Baskerville', serif;
-                font-size: 1.5em;
-                line-height: 2;
-                margin-bottom: 50px;
-                color: #2d1b14;
-                text-align: justify;
-                text-indent: 3em;
-            }}
-            
-            .signature {{
-                font-family: 'Great Vibes', cursive;
-                font-size: 3.2em;
-                color: #8b4513;
-                margin-top: 60px;
-                text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
-            }}
-            
-            .decorative-element {{
-                font-size: 2.5em;
-                color: #daa520;
-                margin: 50px 0;
-                text-align: center;
-                letter-spacing: 25px;
-                opacity: 0.8;
-            }}
-            
-            .ornament {{
-                text-align: center;
-                font-size: 3em;
-                color: #daa520;
-                margin: 40px 0;
-                filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.1));
-            }}
-            
-            @media print {{
-                body {{ background: #fefdfb !important; }}
-                .romantic-page {{ page-break-after: always; }}
-                .page-background {{ display: none; }}
-            }}
-            
-            @media (max-width: 768px) {{
-                .romantic-page {{ padding: 40px 25px; }}
-                .cover-title {{ font-size: 3.2em; }}
-                .page-title {{ font-size: 2.8em; }}
-                .integrated-content {{ grid-template-columns: 1fr; gap: 40px; }}
-                .stats-container {{ grid-template-columns: 1fr; gap: 30px; }}
-                .romantic-text {{ font-size: 1.2em; text-indent: 2em; }}
-                .photo-wrapper img {{ height: 180px; }}
-            }}
+        }}
         </style>
     </head>
     <body>
-        <div class="book-container">
-            
-            <!-- Обложка -->
-            <div class="romantic-page cover-page">
-                <h1 class="cover-title">{content.get('title', 'Ода Твоей Красоте')}</h1>
-                <div class="ornament">❦ ❧ ❦</div>
-                <p class="cover-subtitle">Романтическое посвящение</p>
-                <div class="cover-names">
-                    <p style="font-size: 2.4em; font-weight: 600;">@{username}</p>
-                    <p style="margin-top: 25px; font-size: 1.8em; opacity: 0.95;">
-                        {full_name}
-                        {f'<span class="verified-badge">✓ Verified</span>' if verified else ''}
-                    </p>
-                </div>
-            </div>
-            
-            <!-- Статистика профиля -->
-            <div class="romantic-page stats-page">
-                <div class="page-background"></div>
-                <h2 class="page-title">Цифры Восхищения</h2>
-                <div class="stats-container">
-                    <div class="stat-item">
-                        <div class="stat-number">{followers:,}</div>
-                        <div class="stat-label">Поклонников</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-number">{posts_count}</div>
-                        <div class="stat-label">Моментов</div>
-                    </div>
-                    <div class="stat-item">
-                        <div class="stat-number">{following:,}</div>
-                        <div class="stat-label">Избранных</div>
-                    </div>
-                </div>
-                {f'<div class="bio-section">{bio}</div>' if bio else ''}
-                <div class="romantic-text">
-                    {content.get('stats_admiration', 'Цифры говорят сами за себя...')}
-                </div>
-            </div>
-            
-            <!-- Романтическое вступление -->
-            <div class="romantic-page intro-page">
-                <div class="page-background"></div>
-                <h2 class="page-title">Ода Красоте</h2>
-                <div class="romantic-text">
-                    {content.get('romantic_intro', 'Прекрасные слова о встрече...')}
-                </div>
-                <div class="ornament">✧ ✦ ✧</div>
-            </div>
-            
-            <!-- Интегрированные страницы с фото и текстом или только текст -->
-            {integrated_pages}
-            
-            <!-- Цитата -->
-            <div class="romantic-page quote-page">
-                <div class="quote-text">"Красота - язык, понятный всем"</div>
-                <div class="ornament">❦</div>
-                <p style="font-size: 1.6em; opacity: 0.95; font-style: italic; position: relative; z-index: 2;">Ральф Эмерсон</p>
-            </div>
-            
-            <!-- Финальная страница -->
-            <div class="romantic-page final-page">
-                <div class="page-background"></div>
-                <h2 class="page-title">Посвящение</h2>
-                <div class="final-message">
-                    {content.get('final_dedication', 'Финальное послание восхищения...')}
-                </div>
-                <div class="signature">
-                    С искренним восхищением ❤
-                </div>
-                <div style="font-style: italic; color: #8b4513; margin-top: 40px; font-size: 1.2em;">
-                    Создано с любовью специально для тебя
-                </div>
-                <div class="ornament">❦ ❧ ❦</div>
-            </div>
-            
+
+    <!-- ОБЛОЖКА -->
+    <div class="page">
+        <h1>{content.get('title', f'История @{username}')}</h1>
+        
+        <div class="dedication">
+            <em>Посвящается тем моментам,<br>
+            что делают жизнь прекрасной</em>
         </div>
+        
+        <div style="position: absolute; bottom: 4cm; left: 50%; transform: translateX(-50%); text-align: center;">
+            <p style="font-family: 'Cormorant Garamond', serif; font-size: 11pt; color: #999; margin: 0;">
+                Книга создана с любовью<br>
+                {full_name if full_name != username else username}
+            </p>
+        </div>
+    </div>
+
+    <!-- ПРОЛОГ -->
+    <div class="page">
+        <div class="chapter-number">Пролог</div>
+        <h2>О красоте мгновений</h2>
+        
+        <p class="first-paragraph">
+            <span class="drop-cap">В</span> каждой жизни есть моменты, которые хочется сохранить навсегда. Они приходят незаметно — в утреннем свете, падающем на лицо, в смехе с друзьями, в тишине вечернего города. Instagram стал нашим способом ловить эти мгновения, но экран не может передать всю их глубину.
+        </p>
+        
+        <p>
+            Эта книга — попытка вернуть цифровым воспоминаниям их настоящий вес. Здесь каждая фотография обретает новую жизнь, каждая подпись становится строчкой в большой истории. Это не просто сборник постов — это летопись души, записанная светом и словами.
+        </p>
+        
+        <blockquote>
+            "Фотография — это секрет о секрете. Чем больше она рассказывает, тем меньше вы знаете."
+            <div class="quote-author">— Дайан Арбус</div>
+        </blockquote>
+        
+        <p>
+            Переворачивая страницы этой книги, мы путешествуем по внутреннему миру @{username}, где каждый кадр — это окно в уникальную вселенную чувств и переживаний.
+        </p>
+    </div>
+
+    <!-- ГЛАВА 1: ПОРТРЕТ -->
+    <div class="page">
+        <div class="chapter-number">Глава первая</div>
+        <h2>Портрет в цифровую эпоху</h2>
+        
+        <p class="first-paragraph">
+            <span class="drop-cap">@</span>{username} — это имя, за которым скрывается {full_name if full_name != username else 'удивительная личность'}. В мире Instagram, где миллионы голосов звучат одновременно, этот профиль выделяется своей искренностью и глубиной.
+        </p>
+        
+        <div class="stats-elegant">
+            {format_statistics_creatively('followers', followers)}<br>
+            {format_statistics_creatively('posts', posts_count)}<br>
+            {"✓ Подтвержденный аккаунт" if verified else ""}
+        </div>
+        
+        <p>
+            {bio if bio else 'Биография может быть пустой, но жизнь, отраженная в фотографиях, говорит громче любых слов.'}
+        </p>
+        
+        <p>
+            В каждом посте читается характер автора. Выбор кадра, игра света и тени, момент, который показался достойным сохранения — все это создает портрет современного человека, живущего на пересечении реального и виртуального миров.
+        </p>
+        
+        <blockquote>
+            "Каждая фотография — это автопортрет души фотографа."
+        </blockquote>
+    </div>"""
+    
+    # Добавляем фотографии в элегантном книжном стиле
+    for i, img_base64 in enumerate(processed_images):
+        caption = real_captions[i] if i < len(real_captions) else f'Момент {i+1}'
+        
+        # Чередуем полностраничные фото и встроенные
+        if i % 2 == 0:
+            # Полностраничное фото
+            html += f"""
+    
+    <div class="page photo-page">
+        <div class="photo">
+            <img src="{img_base64}" alt="Фотография {i+1}">
+        </div>
+        
+        <div class="photo-caption">
+            {caption}
+        </div>
+        
+        <p style="margin-top: 2cm; font-style: italic; text-align: center; color: #666;">
+            Каждая фотография — это остановленное время, момент, который больше никогда не повторится. В этом кадре живет частичка души, переданная через объектив в наши сердца.
+        </p>
+    </div>"""
+        else:
+            # Встроенное фото с текстом
+            html += f"""
+    
+    <div class="page">
+        <div class="photo-inline">
+            <img src="{img_base64}" alt="Фотография {i+1}">
+            <div class="photo-caption" style="margin-top: 0.5cm; font-size: 10pt;">
+                {caption}
+            </div>
+        </div>
+        
+        <p class="first-paragraph">
+            <span class="drop-cap">Э</span>тот снимок рассказывает историю без слов. В композиции кадра читается настроение момента, в игре света и тени — эмоции автора. Фотография становится мостом между внутренним миром @{username} и нами, зрителями.
+        </p>
+        
+        <p>
+            Искусство фотографии заключается не в технических параметрах камеры, а в способности увидеть необычное в обычном, поймать ускользающую красоту повседневности. Каждый кадр в этой коллекции — свидетельство того, что красота окружает нас везде, нужно только научиться её замечать.
+        </p>
+        
+        <p>
+            Подпись к фотографии — это не просто описание изображенного. Это ключ к пониманию того, что чувствовал автор в момент съемки, что хотел передать зрителю. Слова и изображение дополняют друг друга, создавая полную картину переживания.
+        </p>
+    </div>"""
+    
+    # Добавляем главы о путешествиях и местах
+    html += f"""
+    
+    <!-- ГЛАВА 2: ГЕОГРАФИЯ ДУШИ -->
+    <div class="page">
+        <div class="chapter-number">Глава вторая</div>
+        <h2>География души</h2>
+        
+        <p class="first-paragraph">
+            <span class="drop-cap">М</span>еста, которые мы выбираем для фотографий, рассказывают о нас не меньше, чем наши лица. В галерее @{username} запечатлены локации, каждая из которых имеет свою историю и значение.
+        </p>
+        
+        <p>
+            {chr(10).join([f"<em>{location}</em> — место, где время останавливается, где каждый кадр наполнен особым смыслом." for location in locations[:3]])}
+        </p>
+        
+        <p>
+            Путешествия в Instagram — это не только смена декораций. Это внутренние путешествия, открытия новых граней себя в новых обстоятельствах. Каждое место оставляет отпечаток в душе, меняет нас, заставляет взглянуть на мир под другим углом.
+        </p>
+        
+        <blockquote>
+            "Мы путешествуем не для того, чтобы убежать от жизни, а для того, чтобы жизнь не убежала от нас."
+        </blockquote>
+        
+        <p>
+            В эпоху цифровых технологий фотография из путешествий становится способом поделиться не только видом, но и чувством. Через кадр передается атмосфера места, его энергетика, то неуловимое ощущение, которое невозможно описать словами.
+        </p>
+    </div>
+
+    <!-- ГЛАВА 3: ЯЗЫК ЭМОЦИЙ -->
+    <div class="page">
+        <div class="chapter-number">Глава третья</div>
+        <h2>Язык эмоций</h2>
+        
+        <p class="first-paragraph">
+            <span class="drop-cap">П</span>одписи к фотографиям в Instagram — это новая форма поэзии. Краткие, емкие, они передают целую гамму чувств в нескольких словах. @{username} владеет этим языком в совершенстве.
+        </p>
+        
+        <p>
+            Каждая подпись — это ключ к пониманию внутреннего мира автора. В них звучат размышления о жизни, любви, дружбе, мечтах. Это честный разговор с миром, где эмоции важнее правильности формулировок.
+        </p>
+        
+        <div style="margin: 2cm 0; font-style: italic; color: #666; text-align: center;">
+            {chr(10).join([f'"{caption}"' for caption in real_captions[:3]])}
+        </div>
+        
+        <p>
+            В этих строчках живет поэзия современности — искренняя, непосредственная, идущая от сердца. Они напоминают нам, что в эпоху цифровых технологий человеческие эмоции остаются главной ценностью.
+        </p>
+        
+        <blockquote>
+            "Лучшие слова — те, что идут от сердца к сердцу."
+        </blockquote>
+    </div>
+
+    <!-- ФИНАЛЬНАЯ ГЛАВА -->
+    <div class="page">
+        <div class="chapter-number">Эпилог</div>
+        <h2>Что останется</h2>
+        
+        <p class="first-paragraph">
+            <span class="drop-cap">К</span>огда-нибудь серверы Instagram перестанут работать, приложения устареют, а цифровые файлы исчезнут. Но эта книга останется — как свидетельство времени, как хроника души, как доказательство того, что красота была здесь.
+        </p>
+        
+        <p>
+            Каждая страница этой книги — попытка остановить время, сохранить мгновения, которые делают жизнь @{username} уникальной и прекрасной. В мире, где все ускоряется, где внимание рассеивается между тысячами постов, эта книга предлагает остановиться и всмотреться.
+        </p>
+        
+        <p>
+            Здесь нет лайков и комментариев, нет алгоритмов и рекламы. Есть только чистая человеческая история, рассказанная светом и словами. История о том, как прекрасна может быть обычная жизнь, если научиться видеть её красоту.
+        </p>
+        
+        <blockquote>
+            "Самые важные моменты жизни случаются между кадрами."
+        </blockquote>
+        
+        <p>
+            Пусть эта книга станет напоминанием о том, что каждый день полон чудес, каждый момент достоин внимания, каждая жизнь — уникальная и бесценная история, заслуживающая быть рассказанной.
+        </p>
+        
+        <div class="dedication" style="margin-top: 4cm;">
+            <em>Конец первой главы.<br>
+            Продолжение следует...</em>
+        </div>
+    </div>
+
     </body>
-    </html>
-    """
+    </html>"""
     
     return html
 
 def convert_image_to_base64(image_path: Path, max_size: tuple = (600, 400), style: str = "original") -> str:
-    """Конвертирует изображение в base64 с применением романтических стилей"""
+    """Конвертирует изображение в base64 с чистой обработкой для EPUB стиля"""
     try:
         if not image_path.exists():
             print(f"❌ Файл изображения не найден: {image_path}")
@@ -1162,23 +1329,21 @@ def convert_image_to_base64(image_path: Path, max_size: tuple = (600, 400), styl
             # Изменяем размер с сохранением пропорций
             img.thumbnail(max_size, Image.Resampling.LANCZOS)
             
-            # Применяем романтические стили
-            if style == "romantic":
-                # Винтажный романтический стиль
-                enhancer = ImageEnhance.Color(img)
-                img = enhancer.enhance(1.15)  # Больше цвета для романтики
-                enhancer = ImageEnhance.Brightness(img)
-                img = enhancer.enhance(1.08)  # Светлее для мягкости
+            # Применяем чистые стили для EPUB
+            if style == "clean":
+                # Минимальная обработка для четкости и читаемости
                 enhancer = ImageEnhance.Contrast(img)
-                img = enhancer.enhance(1.05)  # Мягкий контраст
-                # Очень легкое размытие для винтажности
-                img = img.filter(ImageFilter.GaussianBlur(radius=0.2))
+                img = enhancer.enhance(1.05)  # Легкое увеличение контраста
+                enhancer = ImageEnhance.Sharpness(img)
+                img = enhancer.enhance(1.1)   # Небольшое увеличение резкости
+                enhancer = ImageEnhance.Color(img)
+                img = enhancer.enhance(1.02)  # Очень легкое увеличение насыщенности
                 
             # Конвертируем в base64
             buffer = BytesIO()
-            img.save(buffer, format='JPEG', quality=85, optimize=True)
+            img.save(buffer, format='JPEG', quality=90, optimize=True)
             img_str = base64.b64encode(buffer.getvalue()).decode()
-            print(f"✅ Изображение {image_path.name} успешно обработано")
+            print(f"✅ Изображение {image_path.name} обработано для EPUB стиля")
             return f"data:image/jpeg;base64,{img_str}"
             
     except Exception as e:
