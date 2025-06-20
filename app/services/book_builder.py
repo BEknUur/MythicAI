@@ -3,7 +3,7 @@ import base64
 from io import BytesIO
 from pathlib import Path
 from PIL import Image, ImageFilter, ImageEnhance, ImageDraw, ImageFont
-from app.services.llm_client import generate_text
+from app.services.llm_client import generate_text, analyze_photo
 import markdown
 import pdfkit
 import qrcode
@@ -696,7 +696,7 @@ def add_english_voiceover(text: str) -> str:
     return text
 
 def generate_romantic_content(analysis: dict, images: list[Path]) -> dict:
-    """Генерирует романтический контент на основе РЕАЛЬНЫХ данных Instagram"""
+    """Генерирует романтический контент на основе РЕАЛЬНЫХ данных Instagram с анализом фотографий"""
     
     # Безопасное извлечение данных с fallback значениями
     username = analysis.get('username', 'Неизвестный')
@@ -713,161 +713,101 @@ def generate_romantic_content(analysis: dict, images: list[Path]) -> dict:
     common_hashtags = analysis.get('common_hashtags', [])[:5] if analysis.get('common_hashtags') else [('beautiful', 1), ('life', 1)]
     mentioned_users = analysis.get('mentioned_users', [])[:5] if analysis.get('mentioned_users') else []
     locations = analysis.get('locations', [])[:5] if analysis.get('locations') else ['Неизвестное место']
-    most_liked = analysis.get('most_liked_post')
-    most_commented = analysis.get('most_commented_post')
     
-    # Создаем контекст на основе РЕАЛЬНЫХ данных
-    instagram_context = f"""
-    === РЕАЛЬНЫЙ ПРОФИЛЬ INSTAGRAM ===
-    Имя: @{username} ({full_name})
-    {f"Описание: {bio}" if bio else ""}
-    Подписчики: {followers:,} человек
-    Подписки: {following:,} аккаунтов
-    Публикаций: {posts_count} постов
-    Общие лайки: {total_likes:,}
-    Общие комментарии: {total_comments:,}
+    # Анализируем фотографии с помощью OpenAI Vision
+    photo_analyses = []
+    context = f"Instagram профиль @{username}, подписчики: {followers}, био: {bio}"
     
-    === РЕАЛЬНЫЕ ПОДПИСИ К ПОСТАМ ===
-    {chr(10).join([f'"{caption}"' for caption in real_captions[:5] if caption and len(caption.strip()) > 0])}
+    for i, img_path in enumerate(images[:6]):
+        if img_path.exists():
+            try:
+                analysis_text = analyze_photo(img_path, context)
+                photo_analyses.append(analysis_text)
+                print(f"📸 Анализ фото {i+1}: {analysis_text[:100]}...")
+            except Exception as e:
+                print(f"❌ Ошибка анализа фото {img_path}: {e}")
+                photo_analyses.append("Прекрасный момент, полный эмоций и красоты")
     
-    === ПОПУЛЯРНЫЕ ХЭШТЕГИ ===
-    {', '.join([f'#{hashtag[0]} ({hashtag[1]}x)' for hashtag in common_hashtags if hashtag and len(hashtag) >= 2])}
-    
-    === УПОМИНАНИЯ ДРУЗЕЙ ===
-    {', '.join([f'@{user}' for user in mentioned_users if user and len(user.strip()) > 0])}
-    
-    === ПОСЕЩЕННЫЕ МЕСТА ===
-    {', '.join([loc for loc in locations if loc and len(loc.strip()) > 0])}
-    
-    === САМЫЙ ПОПУЛЯРНЫЙ ПОСТ ===
-    {f'"{most_liked["caption"]}" - {most_liked["likes"]} лайков' if most_liked and most_liked.get("caption") else "Самые яркие моменты жизни"}
-    """
-    
-    # Улучшенные промпты с защитой от ошибок
-    prompts = {
-        "prologue": f"""
-        Напиши пролог автора (1 страница) - почему мы создаем такие Instagram-книги.
-        
-        Расскажи:
-        - Как социальные сети стали новой формой искусства
-        - Почему каждый профиль заслуживает быть книгой
-        - Философию превращения цифровых моментов в осязаемые воспоминания
-        
-        Стиль: Вдохновляющий, философский, с английскими вставками voice-over.
-        Структура: 2-3 коротких предложения, затем 1 длинная фраза, затем цитата.
-        Максимум 500 слов.
-        """,
-        
-        "title": f"""
-        Создай поэтическое название для Instagram-книги @{username}.
-        Используй данные: {bio if bio else 'творческая душа'}
-        Максимум 4 слова, с намеком на кинематографичность.
-        """,
-        
-        "chapter1_frame": f"""
-        Глава 1 - КАДР. Опиши визуальный стиль @{username} как кинорежиссер.
-        
-        ДАННЫЕ: {posts_count} постов, хэштеги: {', '.join([f'#{h[0]}' for h in common_hashtags[:3] if h and len(h) >= 2])}
-        
-        Структура:
-        - Кадр: как они компонуют фотографии
-        - Эмоция: какие чувства передают
-        - Урок: чему учит их визуальный язык
-        
-        Добавь режиссерские ремарки курсивом: "Cut — держите кадр так, чтобы..."
-        Максимум 800 слов.
-        """,
-        
-        "chapter2_emotion": f"""
-        Глава 2 - ЭМОЦИЯ. Анализ эмоционального слоя @{username}.
-        
-        ПОДПИСИ: {chr(10).join([f'"{caption[:100]}..."' for caption in real_captions[:3] if caption and len(caption.strip()) > 0])}
-        
-        Структура по подпунктам:
-        - Кадр: какие эмоции видны на фото
-        - Эмоция: как подписи раскрывают внутренний мир  
-        - Урок: как найти красоту в повседневности
-        
-        Чередуй короткие и длинные предложения. Добавь voice-over на английском.
-        Максимум 800 слов.
-        """,
-        
-        "chapter3_journey": f"""
-        Глава 3 - ПУТЕШЕСТВИЕ. География души через локации.
-        
-        МЕСТА: {', '.join([loc for loc in locations if loc and len(loc.strip()) > 0]) if any(loc and len(loc.strip()) > 0 for loc in locations) else 'удивительные места'}
-        
-        Подпункты:
-        - Кадр: как места формируют кадр
-        - Эмоция: что ищет душа в путешествиях
-        - Урок: как география влияет на характер
-        Максимум 800 слов.
-        """,
-        
-        "chapter4_community": f"""
-        Глава 4 - СООБЩЕСТВО. Связи через экран.
-        
-        ДАННЫЕ: {followers:,} подписчиков, упоминания {', '.join(mentioned_users[:3]) if mentioned_users else 'близких друзей'}
-        
-        - Кадр: как выглядит цифровое сообщество
-        - Эмоция: теплота человеческих связей онлайн
-        - Урок: построение подлинных отношений в сети
-        Максимум 800 слов.
-        """,
-        
-        "chapter5_legacy": f"""
-        Глава 5 - НАСЛЕДИЕ. Что останется от цифрового следа.
-        
-        ИТОГИ: {posts_count} постов = жизненная история
-        
-        - Кадр: как посты складываются в биографию
-        - Эмоция: ценность сохраненных моментов
-        - Урок: создание осмысленного цифрового наследия
-        
-        Финальная режиссерская ремарка о вечности мгновений.
-        Максимум 800 слов.
-        """
+    # Создаем уникальные данные для каждой главы
+    data_for_chapters = {
+        'username': username,
+        'full_name': full_name,
+        'bio': bio,
+        'followers': followers,
+        'posts_count': posts_count,
+        'captions': real_captions,
+        'locations': locations,
+        'mentioned_users': mentioned_users,
+        'total_likes': total_likes,
+        'photo_analyses': photo_analyses
     }
     
-    # Генерируем контент с улучшенной обработкой ошибок
+    # Генерируем уникальный контент с помощью OpenAI
+    from app.services.llm_client import generate_unique_chapter
+    
     content = {}
-    for key, prompt in prompts.items():
-        print(f"💕 Создаем {key} с защитой от ошибок...")
-        try:
-            generated_text = generate_text(prompt, max_tokens=1500)
-            
-            if generated_text and len(generated_text.strip()) > 20:
-                # Применяем улучшения ритма и voice-over
-                generated_text = add_text_rhythm(generated_text)
-                generated_text = add_english_voiceover(generated_text)
-                content[key] = generated_text
-            else:
-                raise ValueError("Пустой или слишком короткий ответ от AI")
-                
-        except Exception as e:
-            print(f"❌ Ошибка при генерации {key}: {e}")
-            # Используем улучшенные резервные тексты
-            fallbacks = {
-                "prologue": f"""В эпоху цифровых историй каждый профиль Instagram становится уникальной книгой. Пиксели превращаются в память. Лайки становятся наследием. <blockquote>"Мы живем в мире, где каждый момент может стать искусством."</blockquote> *Digital soul meets paper heart.* Эта книга — мост между виртуальным и вещественным, между мгновением и вечностью.""",
-                
-                "title": f"Кадры жизни @{username}",
-                
-                "chapter1_frame": f"""*Cut — камера ловит свет в глазах @{username}.* Каждый из {posts_count if posts_count > 0 else '1'} постов — это режиссерское решение. Кадр говорит больше слов. Композиция рассказывает истории. <blockquote>"Великая фотография — это та, что заставляет остановиться и почувствовать."</blockquote> *Frame perfect.* Урок: в каждом кадре живет целая вселенная.""",
-                
-                "chapter2_emotion": f"""Подписи @{username} — это поэзия современности. Короткие строки. Длинные размышления о жизни. <blockquote>"Слова под фотографией — это окно в душу автора."</blockquote> *Pure emotion.* Каждая подпись раскрывает тайны сердца.""",
-                
-                "chapter3_journey": f"""География @{username}: {', '.join(locations[:2]) if locations and any(loc.strip() for loc in locations) else 'неизведанные тропы'}. Каждое место оставляет отпечаток в душе. Кадр меняется с широтой. <blockquote>"Мы путешествуем, чтобы найти себя."</blockquote> *Wanderlust in pixels.*""",
-                
-                "chapter4_community": f"""{format_statistics_creatively('followers', followers)} образуют уникальную аудиторию. Цифровая близость рождает настоящие чувства. Каждый лайк — связь. <blockquote>"Технологии лучше всего работают, когда объединяют сердца."</blockquote> *Connection beyond screens.*""",
-                
-                "chapter5_legacy": f"""Что останется от наших Instagram-историй? {posts_count if posts_count > 0 else 'Каждый'} пост — капсула времени. Цифровое наследие обретает физическую форму. <blockquote>"Мы создаем будущее из пикселей прошлого."</blockquote> *Forever captured.* *Final cut — и камера отъезжает, оставляя вечность мгновений...*"""
-            }
-            content[key] = fallbacks.get(key, "Прекрасная история...")
+    generated_texts = []  # Для отслеживания уже созданных текстов
+    
+    # Пролог
+    print(f"💕 Создаем уникальный пролог...")
+    try:
+        prologue = generate_unique_chapter("intro", data_for_chapters, generated_texts)
+        content['prologue'] = prologue
+        generated_texts.append(prologue[:200])  # Запоминаем начало для избежания повторений
+    except Exception as e:
+        print(f"❌ Ошибка при генерации пролога: {e}")
+        content['prologue'] = f"В мире миллионов профилей @{username} создает свою неповторимую историю. Каждый пост здесь — это страница дневника, написанная светом и эмоциями."
+    
+    # Заголовок
+    content['title'] = f"Визуальная поэзия @{username}"
+    
+    # Глава об эмоциях  
+    print(f"💕 Создаем главу об эмоциях...")
+    try:
+        emotions_chapter = generate_unique_chapter("emotions", data_for_chapters, generated_texts)
+        content['emotions'] = emotions_chapter
+        generated_texts.append(emotions_chapter[:200])
+    except Exception as e:
+        print(f"❌ Ошибка при генерации главы об эмоциях: {e}")
+        content['emotions'] = f"В подписях @{username} живет особый язык чувств. Каждое слово выбрано с заботой, каждая фраза — это мостик между сердцами."
+    
+    # Глава о местах
+    print(f"💕 Создаем главу о местах...")
+    try:
+        places_chapter = generate_unique_chapter("places", data_for_chapters, generated_texts)
+        content['places'] = places_chapter
+        generated_texts.append(places_chapter[:200])
+    except Exception as e:
+        print(f"❌ Ошибка при генерации главы о местах: {e}")
+        content['places'] = f"Карта путешествий @{username} рассказывает историю поиска красоты в самых неожиданных уголках мира."
+    
+    # Глава о сообществе
+    print(f"💕 Создаем главу о сообществе...")
+    try:
+        community_chapter = generate_unique_chapter("community", data_for_chapters, generated_texts)
+        content['community'] = community_chapter
+        generated_texts.append(community_chapter[:200])
+    except Exception as e:
+        print(f"❌ Ошибка при генерации главы о сообществе: {e}")
+        content['community'] = f"Вокруг @{username} сформировалось особое сообщество — {format_statistics_creatively('followers', followers)} людей, объединенных любовью к прекрасному."
+    
+    # Финальная глава
+    print(f"💕 Создаем финальную главу...")
+    try:
+        legacy_chapter = generate_unique_chapter("legacy", data_for_chapters, generated_texts)
+        content['legacy'] = legacy_chapter
+        generated_texts.append(legacy_chapter[:200])
+    except Exception as e:
+        print(f"❌ Ошибка при генерации финальной главы: {e}")
+        content['legacy'] = f"История @{username} — это напоминание о том, что красота живет рядом с нами. Нужно только научиться её видеть и ценить."
+    
+    # Добавляем анализы фотографий
+    content['photo_stories'] = photo_analyses
     
     return content
 
 def create_romantic_book_html(content: dict, analysis: dict, images: list[Path]) -> str:
-    """Создает HTML книгу в стиле настоящей печатной книги с белым фоном"""
+    """Создает HTML книгу с ванильным дизайном и улучшенными фотографиями"""
     
     username = analysis.get('username', 'Неизвестный')
     full_name = analysis.get('full_name', username)
@@ -877,438 +817,542 @@ def create_romantic_book_html(content: dict, analysis: dict, images: list[Path])
     bio = analysis.get('bio', '')
     verified = analysis.get('verified', False)
     
-    # Обрабатываем изображения в классическом стиле
+    # Обрабатываем изображения с улучшенной презентацией
     processed_images = []
     
     for i, img_path in enumerate(images[:8]):
         if img_path.exists():
             try:
                 with Image.open(img_path) as img:
-                    # Простая обработка для книжного качества
+                    # Улучшенная обработка для user-friendly вида
                     if img.mode != 'RGB':
                         img = img.convert('RGB')
                     
-                    # Изменяем размер для книжного формата
-                    img.thumbnail((800, 600), Image.Resampling.LANCZOS)
+                    # Адаптивный размер для лучшего отображения
+                    max_size = (900, 700)
+                    img.thumbnail(max_size, Image.Resampling.LANCZOS)
                     
-                    # Легкое улучшение контраста для печати
+                    # Мягкое улучшение для приятного вида
                     enhancer = ImageEnhance.Contrast(img)
+                    img = enhancer.enhance(1.08)
+                    
+                    enhancer = ImageEnhance.Brightness(img)
+                    img = enhancer.enhance(1.02)
+                    
+                    enhancer = ImageEnhance.Color(img)
                     img = enhancer.enhance(1.05)
                     
                     # Конвертируем в base64
                     buffer = BytesIO()
-                    img.save(buffer, format='JPEG', quality=95)
+                    img.save(buffer, format='JPEG', quality=92)
                     img_str = base64.b64encode(buffer.getvalue()).decode()
                     processed_images.append(f"data:image/jpeg;base64,{img_str}")
             except Exception as e:
                 print(f"❌ Ошибка при обработке изображения {img_path}: {e}")
     
-    # Реальные данные для любовной истории
+    # Реальные данные для контента
     real_captions = analysis.get('captions', ['Прекрасный момент'])[:6]
     locations = analysis.get('locations', ['Неизвестное место'])[:5]
+    photo_stories = content.get('photo_stories', [])
     
-    # HTML книги в классическом стиле
-    html = f"""
-    <!DOCTYPE html>
-    <html lang="ru">
-    <head>
-        <meta charset="UTF-8">
-        <title>Книга о @{username}</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Playfair+Display:wght@400;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
-        
-        <style>
+    # HTML с ванильным дизайном
+    html = f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>{content.get('title', f'Визуальная поэзия @{username}')}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Playfair+Display:wght@400;500;700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    
+    <style>
+    :root {{
+        --vanilla-bg: #faf8f3;
+        --cream-bg: #f7f4ed;
+        --soft-beige: #f2ede2;
+        --warm-white: #fefcf8;
+        --text-dark: #2c2a26;
+        --text-medium: #5a5652;
+        --text-light: #8b8680;
+        --accent-warm: #d4af8c;
+        --shadow-soft: rgba(60, 50, 40, 0.08);
+    }}
+    
+    body {{
+        font-family: 'Crimson Text', serif;
+        font-size: 13pt;
+        line-height: 1.7;
+        color: var(--text-dark);
+        background: var(--vanilla-bg);
+        margin: 0;
+        padding: 0;
+        max-width: 850px;
+        margin: 0 auto;
+        background-image: 
+            radial-gradient(circle at 80% 20%, var(--cream-bg) 0%, transparent 50%),
+            radial-gradient(circle at 20% 80%, var(--soft-beige) 0%, transparent 50%);
+    }}
+    
+    .page {{
+        min-height: 90vh;
+        padding: 2.5cm 3cm;
+        margin-bottom: 1.5cm;
+        page-break-after: always;
+        background: var(--warm-white);
+        box-shadow: 0 6px 25px var(--shadow-soft);
+        border-radius: 8px;
+        position: relative;
+        border: 1px solid rgba(212, 175, 140, 0.1);
+    }}
+    
+    .page::before {{
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, var(--accent-warm), transparent, var(--accent-warm));
+        border-radius: 8px 8px 0 0;
+    }}
+    
+    .page:last-child {{
+        page-break-after: auto;
+    }}
+    
+    h1 {{
+        font-family: 'Playfair Display', serif;
+        font-size: 32pt;
+        text-align: center;
+        margin: 3cm 0 2cm 0;
+        color: var(--text-dark);
+        font-weight: 500;
+        letter-spacing: 2px;
+        line-height: 1.3;
+    }}
+    
+    h2 {{
+        font-family: 'Playfair Display', serif;
+        font-size: 22pt;
+        color: var(--text-dark);
+        margin: 2.5cm 0 1.5cm 0;
+        text-align: left;
+        font-weight: 500;
+        border-bottom: 2px solid var(--accent-warm);
+        padding-bottom: 0.5cm;
+    }}
+    
+    h3 {{
+        font-family: 'Libre Baskerville', serif;
+        font-size: 16pt;
+        color: var(--text-medium);
+        margin: 1.5cm 0 1cm 0;
+        font-weight: 400;
+    }}
+    
+    .chapter-number {{
+        font-family: 'Libre Baskerville', serif;
+        font-size: 12pt;
+        color: var(--text-light);
+        text-align: center;
+        margin-bottom: 1cm;
+        font-style: italic;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+    }}
+    
+    p {{
+        margin: 0 0 1.4em 0;
+        text-align: justify;
+        text-indent: 2.5em;
+    }}
+    
+    .first-paragraph {{
+        text-indent: 0;
+        font-size: 14pt;
+        font-weight: 500;
+    }}
+    
+    .drop-cap {{
+        float: left;
+        font-family: 'Playfair Display', serif;
+        font-size: 80pt;
+        line-height: 65pt;
+        padding-right: 12pt;
+        margin-top: 8pt;
+        color: var(--accent-warm);
+        text-shadow: 2px 2px 4px var(--shadow-soft);
+    }}
+    
+    blockquote {{
+        font-style: italic;
+        margin: 2.5em 2em;
+        padding: 1.5em 2em;
+        border: none;
+        text-align: center;
+        font-size: 12pt;
+        color: var(--text-medium);
+        background: var(--cream-bg);
+        border-radius: 12px;
+        border-left: 4px solid var(--accent-warm);
+        box-shadow: 0 4px 15px var(--shadow-soft);
+    }}
+    
+    .quote-author {{
+        text-align: right;
+        margin-top: 1em;
+        font-size: 11pt;
+        color: var(--text-light);
+        font-style: normal;
+    }}
+    
+    .photo-container {{
+        margin: 2.5cm 0;
+        text-align: center;
+        page-break-inside: avoid;
+    }}
+    
+    .photo-frame {{
+        display: inline-block;
+        padding: 20px;
+        background: var(--warm-white);
+        border-radius: 16px;
+        box-shadow: 
+            0 8px 32px var(--shadow-soft),
+            inset 0 1px 0 rgba(255, 255, 255, 0.8);
+        border: 1px solid rgba(212, 175, 140, 0.2);
+        margin: 1cm 0;
+    }}
+    
+    .photo-frame img {{
+        max-width: 100%;
+        max-height: 500px;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(60, 50, 40, 0.15);
+        border: 3px solid var(--warm-white);
+    }}
+    
+    .photo-caption {{
+        font-family: 'Libre Baskerville', serif;
+        font-style: italic;
+        font-size: 12pt;
+        color: var(--text-medium);
+        margin-top: 1.5cm;
+        text-align: center;
+        line-height: 1.5;
+    }}
+    
+    .photo-story {{
+        margin-top: 1cm;
+        padding: 1.5em;
+        background: var(--soft-beige);
+        border-radius: 12px;
+        font-size: 11pt;
+        color: var(--text-medium);
+        border-left: 3px solid var(--accent-warm);
+    }}
+    
+    .photo-inline {{
+        float: right;
+        margin: 0 0 1.5em 2.5em;
+        width: 320px;
+    }}
+    
+    .photo-inline .photo-frame {{
+        padding: 15px;
+        margin: 0;
+    }}
+    
+    .photo-inline img {{
+        width: 100%;
+        max-height: 280px;
+        object-fit: cover;
+    }}
+    
+    .stats-elegant {{
+        margin: 2cm 0;
+        text-align: center;
+        font-family: 'Libre Baskerville', serif;
+        padding: 2em;
+        background: var(--cream-bg);
+        border-radius: 16px;
+        border: 1px solid rgba(212, 175, 140, 0.2);
+        box-shadow: 0 6px 20px var(--shadow-soft);
+    }}
+    
+    .stats-elegant h3 {{
+        margin-top: 0;
+        color: var(--accent-warm);
+        font-size: 18pt;
+    }}
+    
+    .stats-elegant p {{
+        margin: 0.5em 0;
+        font-size: 12pt;
+        color: var(--text-medium);
+        text-indent: 0;
+    }}
+    
+    .dedication {{
+        text-align: center;
+        font-style: italic;
+        margin: 4cm 0;
+        font-size: 14pt;
+        color: var(--text-medium);
+        padding: 2em;
+        background: var(--soft-beige);
+        border-radius: 16px;
+        border: 1px solid rgba(212, 175, 140, 0.15);
+    }}
+    
+    .captions-showcase {{
+        margin: 2cm 0;
+        padding: 2em;
+        background: var(--warm-white);
+        border-radius: 16px;
+        border-left: 5px solid var(--accent-warm);
+        box-shadow: 0 6px 20px var(--shadow-soft);
+    }}
+    
+    .caption-item {{
+        margin: 1.5em 0;
+        padding: 1em 1.5em;
+        background: var(--cream-bg);
+        border-radius: 8px;
+        font-style: italic;
+        color: var(--text-medium);
+        border-left: 3px solid var(--accent-warm);
+    }}
+    
+    @media print {{
         body {{
-            font-family: 'Crimson Text', serif;
-            font-size: 12pt;
-            line-height: 1.8;
-            color: #1a1a1a;
-            background: white;
             margin: 0;
             padding: 0;
-            max-width: 800px;
-            margin: 0 auto;
+            background: white;
         }}
-        
         .page {{
-            min-height: 90vh;
-            padding: 3cm 2.5cm;
-            margin-bottom: 2cm;
             page-break-after: always;
-            background: white;
+            margin: 0;
+            box-shadow: none;
+            border-radius: 0;
             border: none;
         }}
-        
-        .page:last-child {{
-            page-break-after: auto;
+        .page::before {{
+            display: none;
         }}
-        
-        h1 {{
-            font-family: 'Playfair Display', serif;
-            font-size: 28pt;
-            text-align: center;
-            margin: 4cm 0 2cm 0;
-            color: #1a1a1a;
-            font-weight: 400;
-            letter-spacing: 1px;
-        }}
-        
-        h2 {{
-            font-family: 'Playfair Display', serif;
-            font-size: 18pt;
-            color: #1a1a1a;
-            margin: 3cm 0 1.5cm 0;
-            text-align: left;
-            font-weight: 400;
-        }}
-        
-        h3 {{
-            font-family: 'Playfair Display', serif;
-            font-size: 14pt;
-            color: #1a1a1a;
-            margin: 2cm 0 1cm 0;
-            font-weight: 400;
-        }}
-        
-        .chapter-number {{
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 14pt;
-            color: #666;
-            text-align: center;
-            margin-bottom: 1cm;
-            font-style: italic;
-        }}
-        
-        p {{
-            margin: 0 0 1.5em 0;
-            text-align: justify;
-            text-indent: 2em;
-        }}
-        
-        .first-paragraph {{
-            text-indent: 0;
-            font-size: 13pt;
-        }}
-        
-        .drop-cap {{
-            float: left;
-            font-family: 'Playfair Display', serif;
-            font-size: 72pt;
-            line-height: 60pt;
-            padding-right: 8pt;
-            margin-top: 4pt;
-            color: #1a1a1a;
-        }}
-        
-        blockquote {{
-            font-style: italic;
-            margin: 2em 3em;
-            padding: 0;
-            border: none;
-            text-align: center;
-            font-size: 11pt;
-            color: #444;
-        }}
-        
-        .quote-author {{
-            text-align: right;
-            margin-top: 1em;
-            font-size: 10pt;
-            color: #666;
-        }}
-        
-        .photo-page {{
-            text-align: center;
-            page-break-inside: avoid;
-        }}
-        
-        .photo {{
-            margin: 2cm 0 1.5cm 0;
-            text-align: center;
-        }}
-        
-        .photo img {{
-            max-width: 100%;
-            max-height: 400px;
-            border: 1px solid #ddd;
-            padding: 10px;
-            background: white;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }}
-        
-        .photo-caption {{
-            font-family: 'Cormorant Garamond', serif;
-            font-style: italic;
-            font-size: 11pt;
-            color: #666;
-            margin-top: 1cm;
-            text-align: center;
-        }}
-        
-        .photo-inline {{
-            float: right;
-            margin: 0 0 1em 2em;
-            width: 300px;
-        }}
-        
-        .photo-inline img {{
-            width: 100%;
-            border: 1px solid #ddd;
-            padding: 8px;
-            background: white;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-        }}
-        
-        .stats-elegant {{
-            margin: 2cm 0;
-            text-align: center;
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 11pt;
-            color: #666;
-        }}
-        
-        .dedication {{
-            text-align: center;
-            font-style: italic;
-            margin: 4cm 0;
-            font-size: 12pt;
-            color: #666;
-        }}
-        
-        .chapter-separator {{
-            text-align: center;
-            margin: 3cm 0;
-            font-size: 14pt;
-            color: #ccc;
-        }}
-        
-        .page-number {{
-            position: absolute;
-            bottom: 2cm;
-            right: 2.5cm;
-            font-size: 10pt;
-            color: #999;
-        }}
-        
-        @media print {{
-            body {{
-                margin: 0;
-                padding: 0;
-            }}
-            .page {{
-                page-break-after: always;
-                margin: 0;
-                box-shadow: none;
-            }}
-        }}
-        </style>
-    </head>
-    <body>
+    }}
+    </style>
+</head>
+<body>
 
-    <!-- ОБЛОЖКА -->
-    <div class="page">
-        <h1>{content.get('title', f'История @{username}')}</h1>
-        
-        <div class="dedication">
-            <em>Посвящается тем моментам,<br>
-            что делают жизнь прекрасной</em>
-        </div>
-        
-        <div style="position: absolute; bottom: 4cm; left: 50%; transform: translateX(-50%); text-align: center;">
-            <p style="font-family: 'Cormorant Garamond', serif; font-size: 11pt; color: #999; margin: 0;">
-                Книга создана с любовью<br>
-                {full_name if full_name != username else username}
-            </p>
-        </div>
-    </div>
-
-    <!-- ПРОЛОГ -->
-    <div class="page">
-        <div class="chapter-number">Пролог</div>
-        <h2>О красоте мгновений</h2>
-        
-        <p class="first-paragraph">
-            <span class="drop-cap">В</span> каждой жизни есть моменты, которые хочется сохранить навсегда. Они приходят незаметно — в утреннем свете, падающем на лицо, в смехе с друзьями, в тишине вечернего города. Instagram стал нашим способом ловить эти мгновения, но экран не может передать всю их глубину.
-        </p>
-        
-        <p>
-            Эта книга — попытка вернуть цифровым воспоминаниям их настоящий вес. Здесь каждая фотография обретает новую жизнь, каждая подпись становится строчкой в большой истории. Это не просто сборник постов — это летопись души, записанная светом и словами.
-        </p>
-        
-        <blockquote>
-            "Фотография — это секрет о секрете. Чем больше она рассказывает, тем меньше вы знаете."
-            <div class="quote-author">— Дайан Арбус</div>
-        </blockquote>
-        
-        <p>
-            Переворачивая страницы этой книги, мы путешествуем по внутреннему миру @{username}, где каждый кадр — это окно в уникальную вселенную чувств и переживаний.
-        </p>
-    </div>
-
-    <!-- ГЛАВА 1: ПОРТРЕТ -->
-    <div class="page">
-        <div class="chapter-number">Глава первая</div>
-        <h2>Портрет в цифровую эпоху</h2>
-        
-        <p class="first-paragraph">
-            <span class="drop-cap">@</span>{username} — это имя, за которым скрывается {full_name if full_name != username else 'удивительная личность'}. В мире Instagram, где миллионы голосов звучат одновременно, этот профиль выделяется своей искренностью и глубиной.
-        </p>
-        
-        <div class="stats-elegant">
-            {format_statistics_creatively('followers', followers)}<br>
-            {format_statistics_creatively('posts', posts_count)}<br>
-            {"✓ Подтвержденный аккаунт" if verified else ""}
-        </div>
-        
-        <p>
-            {bio if bio else 'Биография может быть пустой, но жизнь, отраженная в фотографиях, говорит громче любых слов.'}
-        </p>
-        
-        <p>
-            В каждом посте читается характер автора. Выбор кадра, игра света и тени, момент, который показался достойным сохранения — все это создает портрет современного человека, живущего на пересечении реального и виртуального миров.
-        </p>
-        
-        <blockquote>
-            "Каждая фотография — это автопортрет души фотографа."
-        </blockquote>
-    </div>"""
+<!-- ОБЛОЖКА -->
+<div class="page">
+    <h1>{content.get('title', f'Визуальная поэзия @{username}')}</h1>
     
-    # Добавляем фотографии в элегантном книжном стиле
+    <div class="dedication">
+        Каждый снимок — это стихотворение,<br>
+        каждая подпись — строчка в большой книге жизни
+    </div>
+    
+    <div style="position: absolute; bottom: 3cm; left: 50%; transform: translateX(-50%); text-align: center;">
+        <p style="font-family: 'Libre Baskerville', serif; font-size: 12pt; color: var(--text-light); margin: 0;">
+            Автор: {full_name if full_name != username else username}<br>
+            <small style="font-size: 10pt;">Instagram Story Book</small>
+        </p>
+    </div>
+</div>
+
+<!-- ПРОЛОГ -->
+<div class="page">
+    <div class="chapter-number">Пролог</div>
+    <h2>Цифровая поэзия</h2>
+    
+    <p class="first-paragraph">
+        <span class="drop-cap">В</span>нутри каждого Instagram профиля скрывается удивительная история. За привычными квадратными кадрами живут настоящие эмоции, искренние переживания и моменты, которые хочется сохранить навсегда.
+    </p>
+    
+    <p>
+        {content.get('prologue', f'@{username} создает свою уникальную визуальную поэзию. Каждый пост здесь — это не просто фотография, а глава в большой книге жизни, написанная светом, цветом и искренними словами.')}
+    </p>
+    
+    <blockquote>
+        "Лучшие истории рассказываются не словами, а моментами, которые мы успеваем заметить и сохранить."
+        <div class="quote-author">— Философия Instagram</div>
+    </blockquote>
+</div>
+
+<!-- ПОРТРЕТ АВТОРА -->
+<div class="page">
+    <div class="chapter-number">Глава первая</div>
+    <h2>Автор в кадре</h2>
+    
+    <p class="first-paragraph">
+        <span class="drop-cap">@</span>{username} — это больше чем просто имя пользователя. За этими символами стоит {full_name if full_name != username else 'удивительная личность'}, которая делится с миром своим уникальным взглядом на красоту.
+    </p>
+    
+    <div class="stats-elegant">
+        <h3>Цифровой портрет</h3>
+        <p><strong>{format_statistics_creatively('followers', followers)}</strong></p>
+        <p><strong>{format_statistics_creatively('posts', posts_count)}</strong></p>
+        <p>{f'✓ Подтвержденный аккаунт' if verified else 'Аутентичный голос'}</p>
+    </div>
+    
+    <p>
+        {bio if bio else 'Биография может молчать, но фотографии говорят громче слов. В каждом кадре читается характер автора, его видение мира и способность находить красоту в самых обычных моментах.'}
+    </p>
+    
+    <blockquote>
+        "Через объектив камеры мы познаем не только мир, но и самих себя."
+    </blockquote>
+</div>"""
+    
+    # Добавляем фотографии с анализом
     for i, img_base64 in enumerate(processed_images):
         caption = real_captions[i] if i < len(real_captions) else f'Момент {i+1}'
+        photo_analysis = photo_stories[i] if i < len(photo_stories) else "Этот снимок передает особую атмосферу и настроение момента."
         
-        # Чередуем полностраничные фото и встроенные
-        if i % 2 == 0:
+        # Чередуем полные страницы и встроенные фото
+        if i % 3 == 0:
             # Полностраничное фото
             html += f"""
-    
-    <div class="page photo-page">
-        <div class="photo">
+
+<div class="page">
+    <div class="photo-container">
+        <div class="photo-frame">
             <img src="{img_base64}" alt="Фотография {i+1}">
         </div>
         
         <div class="photo-caption">
-            {caption}
+            "{caption}"
         </div>
         
-        <p style="margin-top: 2cm; font-style: italic; text-align: center; color: #666;">
-            Каждая фотография — это остановленное время, момент, который больше никогда не повторится. В этом кадре живет частичка души, переданная через объектив в наши сердца.
-        </p>
-    </div>"""
+        <div class="photo-story">
+            {photo_analysis}
+        </div>
+    </div>
+</div>"""
         else:
             # Встроенное фото с текстом
             html += f"""
-    
-    <div class="page">
-        <div class="photo-inline">
+
+<div class="page">
+    <div class="photo-inline">
+        <div class="photo-frame">
             <img src="{img_base64}" alt="Фотография {i+1}">
-            <div class="photo-caption" style="margin-top: 0.5cm; font-size: 10pt;">
-                {caption}
-            </div>
         </div>
-        
-        <p class="first-paragraph">
-            <span class="drop-cap">Э</span>тот снимок рассказывает историю без слов. В композиции кадра читается настроение момента, в игре света и тени — эмоции автора. Фотография становится мостом между внутренним миром @{username} и нами, зрителями.
-        </p>
-        
-        <p>
-            Искусство фотографии заключается не в технических параметрах камеры, а в способности увидеть необычное в обычном, поймать ускользающую красоту повседневности. Каждый кадр в этой коллекции — свидетельство того, что красота окружает нас везде, нужно только научиться её замечать.
-        </p>
-        
-        <p>
-            Подпись к фотографии — это не просто описание изображенного. Это ключ к пониманию того, что чувствовал автор в момент съемки, что хотел передать зрителю. Слова и изображение дополняют друг друга, создавая полную картину переживания.
-        </p>
-    </div>"""
+        <div class="photo-caption" style="margin-top: 0.8cm; font-size: 10pt;">
+            "{caption}"
+        </div>
+    </div>
     
-    # Добавляем главы о путешествиях и местах
+    <p class="first-paragraph">
+        <span class="drop-cap">К</span>аждая фотография рассказывает свою уникальную историю. В этом кадре живет особый момент, пойманный @{username} и переданный нам через экран.
+    </p>
+    
+    <p>
+        {photo_analysis}
+    </p>
+    
+    <p>
+        Искусство современной фотографии заключается не только в технических навыках, но и в способности почувствовать момент, когда обычная сцена превращается в произведение искусства. Именно такие мгновения и ловит объектив @{username}.
+    </p>
+</div>"""
+    
+    # Добавляем главы с контентом
     html += f"""
+
+<!-- ЭМОЦИОНАЛЬНЫЙ МИР -->
+<div class="page">
+    <div class="chapter-number">Глава вторая</div>
+    <h2>Язык эмоций</h2>
     
-    <!-- ГЛАВА 2: ГЕОГРАФИЯ ДУШИ -->
-    <div class="page">
-        <div class="chapter-number">Глава вторая</div>
-        <h2>География души</h2>
-        
-        <p class="first-paragraph">
-            <span class="drop-cap">М</span>еста, которые мы выбираем для фотографий, рассказывают о нас не меньше, чем наши лица. В галерее @{username} запечатлены локации, каждая из которых имеет свою историю и значение.
-        </p>
-        
-        <p>
-            {chr(10).join([f"<em>{location}</em> — место, где время останавливается, где каждый кадр наполнен особым смыслом." for location in locations[:3]])}
-        </p>
-        
-        <p>
-            Путешествия в Instagram — это не только смена декораций. Это внутренние путешествия, открытия новых граней себя в новых обстоятельствах. Каждое место оставляет отпечаток в душе, меняет нас, заставляет взглянуть на мир под другим углом.
-        </p>
-        
-        <blockquote>
-            "Мы путешествуем не для того, чтобы убежать от жизни, а для того, чтобы жизнь не убежала от нас."
-        </blockquote>
-        
-        <p>
-            В эпоху цифровых технологий фотография из путешествий становится способом поделиться не только видом, но и чувством. Через кадр передается атмосфера места, его энергетика, то неуловимое ощущение, которое невозможно описать словами.
+    <p class="first-paragraph">
+        <span class="drop-cap">С</span>лова под фотографиями — это не просто подписи. Это ключи к внутреннему миру автора, его переживаниям и мыслям в момент создания кадра.
+    </p>
+    
+    <p>
+        {content.get('emotions', f'В подписях @{username} живет особая поэзия современности. Каждое слово выбрано с заботой, каждая фраза отражает искренние чувства и переживания.')}
+    </p>
+    
+    <div class="captions-showcase">
+        <h3>Голос автора</h3>
+        {chr(10).join([f'<div class="caption-item">"{caption}"</div>' for caption in real_captions[:4]])}
+    </div>
+    
+    <blockquote>
+        "В эпоху быстрых сообщений искренние слова становятся особенно ценными."
+    </blockquote>
+</div>
+
+<!-- ГЕОГРАФИЯ ДУШИ -->
+<div class="page">
+    <div class="chapter-number">Глава третья</div>
+    <h2>Карта путешествий</h2>
+    
+    <p class="first-paragraph">
+        <span class="drop-cap">М</span>еста, которые мы выбираем для фотографий, многое говорят о наших приоритетах, мечтах и стремлениях. География @{username} — это карта души.
+    </p>
+    
+    <p>
+        {content.get('places', f'Каждое место в галерее @{username} имеет свою историю. От {", ".join(locations[:3])} — каждая локация оставила свой след в визуальной летописи.')}
+    </p>
+    
+    <div style="margin: 2cm 0; padding: 1.5em; background: var(--soft-beige); border-radius: 12px;">
+        <h3 style="margin-top: 0; color: var(--accent-warm);">Любимые места:</h3>
+        {chr(10).join([f'<p style="margin: 0.5em 0; text-indent: 0;"><em>{location}</em></p>' for location in locations[:5]])}
+    </div>
+    
+    <blockquote>
+        "Путешествие начинается не с первого шага, а с первого взгляда на карту."
+    </blockquote>
+</div>
+
+<!-- СООБЩЕСТВО -->
+<div class="page">
+    <div class="chapter-number">Глава четвертая</div>
+    <h2>Цифровые связи</h2>
+    
+    <p class="first-paragraph">
+        <span class="drop-cap">В</span> мире социальных сетей мы создаем новые формы близости и понимания. Сообщество вокруг @{username} — это особое пространство.
+    </p>
+    
+    <p>
+        {content.get('community', f'Вокруг профиля @{username} сформировалось сообщество людей, которых объединяет любовь к прекрасному. {format_statistics_creatively("followers", followers)} — это не просто цифра, это живые люди с собственными историями.')}
+    </p>
+    
+    <blockquote>
+        "Настоящие связи создаются не количеством подписчиков, а качеством взаимодействия."
+    </blockquote>
+</div>
+
+<!-- ФИНАЛ -->
+<div class="page">
+    <div class="chapter-number">Эпилог</div>
+    <h2>Что останется</h2>
+    
+    <p class="first-paragraph">
+        <span class="drop-cap">В</span> эпоху цифровых технологий мы создаем новые формы памяти. Эта книга — попытка сохранить мгновения, которые делают нашу жизнь особенной.
+    </p>
+    
+    <p>
+        {content.get('legacy', f'История @{username} — это напоминание о том, что красота окружает нас повсюду. Нужно только научиться её замечать, ценить и делиться ею с другими.')}
+    </p>
+    
+    <div class="dedication" style="margin-top: 3cm;">
+        <strong>Конец первой главы.</strong><br>
+        <em>История продолжается...</em>
+    </div>
+    
+    <div style="position: absolute; bottom: 2cm; left: 50%; transform: translateX(-50%); text-align: center;">
+        <p style="font-size: 10pt; color: var(--text-light); margin: 0;">
+            Создано с любовью • Instagram Story Book<br>
+            <small>Каждая история уникальна</small>
         </p>
     </div>
+</div>
 
-    <!-- ГЛАВА 3: ЯЗЫК ЭМОЦИЙ -->
-    <div class="page">
-        <div class="chapter-number">Глава третья</div>
-        <h2>Язык эмоций</h2>
-        
-        <p class="first-paragraph">
-            <span class="drop-cap">П</span>одписи к фотографиям в Instagram — это новая форма поэзии. Краткие, емкие, они передают целую гамму чувств в нескольких словах. @{username} владеет этим языком в совершенстве.
-        </p>
-        
-        <p>
-            Каждая подпись — это ключ к пониманию внутреннего мира автора. В них звучат размышления о жизни, любви, дружбе, мечтах. Это честный разговор с миром, где эмоции важнее правильности формулировок.
-        </p>
-        
-        <div style="margin: 2cm 0; font-style: italic; color: #666; text-align: center;">
-            {chr(10).join([f'"{caption}"' for caption in real_captions[:3]])}
-        </div>
-        
-        <p>
-            В этих строчках живет поэзия современности — искренняя, непосредственная, идущая от сердца. Они напоминают нам, что в эпоху цифровых технологий человеческие эмоции остаются главной ценностью.
-        </p>
-        
-        <blockquote>
-            "Лучшие слова — те, что идут от сердца к сердцу."
-        </blockquote>
-    </div>
-
-    <!-- ФИНАЛЬНАЯ ГЛАВА -->
-    <div class="page">
-        <div class="chapter-number">Эпилог</div>
-        <h2>Что останется</h2>
-        
-        <p class="first-paragraph">
-            <span class="drop-cap">К</span>огда-нибудь серверы Instagram перестанут работать, приложения устареют, а цифровые файлы исчезнут. Но эта книга останется — как свидетельство времени, как хроника души, как доказательство того, что красота была здесь.
-        </p>
-        
-        <p>
-            Каждая страница этой книги — попытка остановить время, сохранить мгновения, которые делают жизнь @{username} уникальной и прекрасной. В мире, где все ускоряется, где внимание рассеивается между тысячами постов, эта книга предлагает остановиться и всмотреться.
-        </p>
-        
-        <p>
-            Здесь нет лайков и комментариев, нет алгоритмов и рекламы. Есть только чистая человеческая история, рассказанная светом и словами. История о том, как прекрасна может быть обычная жизнь, если научиться видеть её красоту.
-        </p>
-        
-        <blockquote>
-            "Самые важные моменты жизни случаются между кадрами."
-        </blockquote>
-        
-        <p>
-            Пусть эта книга станет напоминанием о том, что каждый день полон чудес, каждый момент достоин внимания, каждая жизнь — уникальная и бесценная история, заслуживающая быть рассказанной.
-        </p>
-        
-        <div class="dedication" style="margin-top: 4cm;">
-            <em>Конец первой главы.<br>
-            Продолжение следует...</em>
-        </div>
-    </div>
-
-    </body>
-    </html>"""
+</body>
+</html>"""
     
     return html
 
