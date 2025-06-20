@@ -13,6 +13,9 @@ python-multipart
 pillow
 transformers
 google-generativeai
+uuid
+pathlib
+base64
 
 
 
