@@ -106,6 +106,10 @@ def download_photos(items: List[Dict], folder: Path):
             log.warning("no image urls found — nothing to download")
             return
 
+        # Ограничиваем до первых 15 фотографий для оптимизации
+        urls = urls[:15]
+        log.info("limiting to first %s images for optimal performance", len(urls))
+
         folder.mkdir(parents=True, exist_ok=True)
         log.info("downloading %s images → %s", len(urls), folder)
 

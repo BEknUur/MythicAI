@@ -727,3 +727,40 @@ def status_page(runId: str):
 </body>
 </html>
     """)
+
+@app.post("/create-book")
+async def create_book(request: Request, background: BackgroundTasks):
+    """Создает романтическую книгу на основе данных профиля"""
+    try:
+        body = await request.json()
+        run_id = body.get("runId")
+        book_format = body.get("format", "classic")  # "classic" или "zine"
+        
+        if not run_id:
+            raise HTTPException(400, "runId обязателен")
+        
+        # Проверяем, что данные существуют
+        run_dir = Path("data") / run_id
+        if not run_dir.exists():
+            raise HTTPException(404, f"Данные для runId {run_id} не найдены")
+    except Exception as e:
+        raise HTTPException(400, f"Ошибка в параметрах запроса: {e}")
+
+    async def _build():
+        # Ждем завершения загрузки изображений
+        images_dir = run_dir / "images"
+        for attempt in range(10):  # Максимум 20 секунд ожидания
+            if images_dir.exists() and any(images_dir.glob("*")):
+                print(f"📸 Найдены изображения в папке {images_dir}")
+                break
+            print(f"⏳ Попытка {attempt + 1}/10: ждем загрузки изображений...")
+            await asyncio.sleep(2)
+
+        imgs      = await process_folder(images_dir)
+        comments  = collect_texts(run_dir / "posts.json")
+        build_romantic_book(run_id, imgs, comments, book_format)
+
+    background.add_task(lambda: anyio.run(_build))
+
+    format_name = "классическую книгу" if book_format == "classic" else "мозаичный зин"
+    return {"status": "processing", "runId": run_id, "format": book_format, "message": f"Создание {format_name} началось! 💕"}

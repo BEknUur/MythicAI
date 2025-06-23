@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>✨ Instagram Books • Создание красивых книг</title>
+    <title>Instagram-книга • Истории от первого лица</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@300;400;500;600&family=Dancing+Script:wght@400;600;700&family=Crimson+Text:wght@400;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Crimson+Text:ital,wght@0,400;0,600;1,400;1,600&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap');
         
         * {
             margin: 0;
@@ -14,373 +14,222 @@
         }
         
         :root {
-            --primary-pink: #f8bbd9;
-            --soft-pink: #fce7f3;
-            --deep-rose: #e879f9;
-            --lavender: #ddd6fe;
-            --mint: #a7f3d0;
-            --cream: #fef7ed;
-            --text-dark: #374151;
-            --text-soft: #6b7280;
-            --white: #ffffff;
-            --shadow-soft: rgba(248, 187, 217, 0.2);
-            --shadow-medium: rgba(232, 121, 249, 0.15);
-            --gradient-main: linear-gradient(135deg, var(--soft-pink) 0%, var(--lavender) 50%, var(--mint) 100%);
+            --paper-cream: #faf8f3;
+            --text-charcoal: #2c2a26;
+            --text-soft: #5a5652;
+            --accent-rust: #b85450;
+            --accent-gold: #d4af8c;
+            --shadow-warm: rgba(60, 50, 40, 0.12);
+            --border-subtle: rgba(212, 175, 140, 0.3);
         }
         
         body {
             font-family: 'Crimson Text', serif;
-            background: var(--gradient-main);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-            color: var(--text-dark);
-            line-height: 1.6;
-            position: relative;
-            overflow-x: hidden;
+            background: var(--paper-cream);
+            color: var(--text-charcoal);
+            line-height: 1.7;
+            font-size: 16px;
         }
         
-        /* Фоновые элементы */
-        body::before {
-            content: '';
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: 
-                radial-gradient(circle at 20% 80%, rgba(248, 187, 217, 0.3) 0%, transparent 50%),
-                radial-gradient(circle at 80% 20%, rgba(232, 121, 249, 0.2) 0%, transparent 50%),
-                radial-gradient(circle at 40% 40%, rgba(167, 243, 208, 0.2) 0%, transparent 50%);
-            pointer-events: none;
-            z-index: 0;
-        }
-        
-        /* Плавающие элементы */
-        .floating-elements {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            pointer-events: none;
-            z-index: 1;
-        }
-        
-        .floating-heart {
-            position: absolute;
-            color: rgba(248, 187, 217, 0.4);
-            font-size: 1.5em;
-            animation: float 8s ease-in-out infinite;
-        }
-        
-        .floating-star {
-            position: absolute;
-            color: rgba(232, 121, 249, 0.3);
-            font-size: 1.2em;
-            animation: twinkle 6s ease-in-out infinite;
-        }
-        
-        .floating-flower {
-            position: absolute;
-            color: rgba(167, 243, 208, 0.4);
-            font-size: 1.8em;
-            animation: sway 10s ease-in-out infinite;
-        }
-        
-        .floating-heart:nth-child(1) { top: 10%; left: 15%; animation-delay: 0s; }
-        .floating-heart:nth-child(2) { top: 70%; right: 20%; animation-delay: 3s; }
-        .floating-star:nth-child(3) { top: 30%; left: 80%; animation-delay: 1s; }
-        .floating-star:nth-child(4) { bottom: 30%; left: 10%; animation-delay: 4s; }
-        .floating-flower:nth-child(5) { top: 50%; right: 10%; animation-delay: 2s; }
-        .floating-flower:nth-child(6) { bottom: 20%; left: 70%; animation-delay: 5s; }
-        
-        @keyframes float {
-            0%, 100% { transform: translateY(0px) rotate(0deg); opacity: 0.4; }
-            50% { transform: translateY(-20px) rotate(5deg); opacity: 0.7; }
-        }
-        
-        @keyframes twinkle {
-            0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.3; }
-            50% { transform: scale(1.2) rotate(180deg); opacity: 0.8; }
-        }
-        
-        @keyframes sway {
-            0%, 100% { transform: rotate(-5deg); opacity: 0.4; }
-            50% { transform: rotate(5deg); opacity: 0.6; }
-        }
-        
-        .book-container {
-            background: var(--white);
-            border-radius: 20px;
-            box-shadow: 
-                0 8px 32px var(--shadow-soft),
-                0 20px 60px var(--shadow-medium),
-                inset 0 1px 0 rgba(255, 255, 255, 0.8);
-            max-width: 900px;
-            width: 100%;
-            overflow: hidden;
-            position: relative;
-            z-index: 2;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            transform: translateY(0);
-            transition: all 0.3s ease;
-        }
-        
-        .book-container:hover {
-            transform: translateY(-5px);
-            box-shadow: 
-                0 15px 40px var(--shadow-soft),
-                0 30px 80px var(--shadow-medium),
-                inset 0 1px 0 rgba(255, 255, 255, 0.9);
-        }
-        
-        .book-header {
-            padding: 60px 60px 40px;
-            text-align: center;
-            background: linear-gradient(135deg, var(--white) 0%, var(--soft-pink) 100%);
-            border-bottom: 2px solid var(--primary-pink);
+        /* Литературная обертка */
+        .literary-wrapper {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: #ffffff;
+            box-shadow: 0 8px 40px var(--shadow-warm);
+            border-radius: 12px;
+            margin-top: 40px;
+            margin-bottom: 40px;
             position: relative;
         }
         
-        .book-header::before {
+        .literary-wrapper::before {
             content: '';
             position: absolute;
             top: 0;
             left: 0;
             right: 0;
-            bottom: 0;
-            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="20" r="1" fill="rgba(248,187,217,0.1)"/><circle cx="80" cy="60" r="1.5" fill="rgba(232,121,249,0.1)"/><circle cx="50" cy="80" r="0.8" fill="rgba(167,243,208,0.1)"/></svg>') repeat;
-            pointer-events: none;
+            height: 4px;
+            background: linear-gradient(90deg, var(--accent-rust), var(--accent-gold));
+            border-radius: 12px 12px 0 0;
         }
         
-        .book-icon {
-            font-size: 4em;
-            margin-bottom: 20px;
-            display: block;
-            background: linear-gradient(135deg, var(--deep-rose), var(--primary-pink));
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: glow 3s ease-in-out infinite;
-            position: relative;
-            z-index: 1;
-        }
-        
-        @keyframes glow {
-            0%, 100% { filter: drop-shadow(0 0 5px rgba(248, 187, 217, 0.5)); }
-            50% { filter: drop-shadow(0 0 20px rgba(232, 121, 249, 0.8)); }
-        }
-        
+        /* Заголовок в стиле книги */
         .book-title {
             font-family: 'Playfair Display', serif;
-            font-size: 3em;
+            font-size: 2.8rem;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--deep-rose), var(--primary-pink), var(--lavender));
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 15px;
-            letter-spacing: -0.02em;
-            position: relative;
-            z-index: 1;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-align: center;
+            color: var(--text-charcoal);
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.5px;
         }
         
         .book-subtitle {
-            font-family: 'Dancing Script', cursive;
-            font-size: 1.4em;
+            font-family: 'Libre Baskerville', serif;
+            font-style: italic;
+            font-size: 1.1rem;
+            text-align: center;
             color: var(--text-soft);
-            font-weight: 600;
-            max-width: 600px;
-            margin: 0 auto;
-            line-height: 1.6;
+            margin-bottom: 3rem;
+            padding: 0 2rem;
+        }
+        
+        /* Эпиграф */
+        .epigraph {
+            text-align: center;
+            font-style: italic;
+            color: var(--text-soft);
+            border-top: 1px solid var(--border-subtle);
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 2rem 0;
+            margin: 3rem 0;
+            font-size: 1.05rem;
             position: relative;
-            z-index: 1;
         }
         
-        .book-content {
-            padding: 50px 60px;
-            background: var(--white);
-        }
-        
-        .description {
-            background: linear-gradient(135deg, var(--soft-pink), var(--cream));
-            padding: 40px;
-            border-radius: 20px;
-            border-left: 5px solid var(--primary-pink);
-            margin-bottom: 40px;
-            font-size: 1.2em;
-            line-height: 1.8;
-            color: var(--text-dark);
-            box-shadow: 0 8px 24px rgba(248, 187, 217, 0.2);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .description::before {
-            content: '✨';
+        .epigraph::before, .epigraph::after {
+            content: '❦';
+            color: var(--accent-gold);
+            font-size: 1.2rem;
             position: absolute;
-            top: -10px;
-            right: 30px;
-            font-size: 2.5em;
-            background: var(--white);
-            width: 60px;
-            height: 60px;
+        }
+        
+        .epigraph::before {
+            left: 50%;
+            top: -12px;
+            transform: translateX(-50%);
+            background: white;
+            padding: 0 15px;
+        }
+        
+        .epigraph::after {
+            left: 50%;
+            bottom: -12px;
+            transform: translateX(-50%);
+            background: white;
+            padding: 0 15px;
+        }
+        
+        /* Параграфы в литературном стиле */
+        .literary-text {
+            text-align: justify;
+            text-indent: 2rem;
+            margin-bottom: 1.5rem;
+            line-height: 1.8;
+            font-size: 1.1rem;
+        }
+        
+        .literary-text:first-of-type {
+            text-indent: 0;
+            font-weight: 500;
+        }
+        
+        /* Диалоги */
+        .dialogue {
+            font-style: italic;
+            color: var(--text-soft);
+            margin: 1.5rem 0;
+            padding-left: 2rem;
+            border-left: 3px solid var(--accent-gold);
+            position: relative;
+        }
+        
+        .dialogue::before {
+            content: '—';
+            position: absolute;
+            left: -15px;
+            color: var(--accent-rust);
+            font-weight: bold;
+        }
+        
+        /* Форма ввода в литературном стиле */
+        .manuscript-form {
+            background: linear-gradient(135deg, #fefcf8 0%, #f7f4ed 100%);
+            padding: 3rem;
+            border-radius: 12px;
+            border: 1px solid var(--border-subtle);
+            margin: 3rem 0;
+            position: relative;
+        }
+        
+        .manuscript-form::before {
+            content: '📖';
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 10px;
             border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 15px rgba(248, 187, 217, 0.3);
-            animation: sparkle 4s ease-in-out infinite;
+            box-shadow: 0 4px 12px var(--shadow-warm);
+            font-size: 1.5rem;
         }
         
-        @keyframes sparkle {
-            0%, 100% { transform: rotate(0deg) scale(1); }
-            50% { transform: rotate(180deg) scale(1.1); }
+        .form-introduction {
+            text-align: center;
+            font-style: italic;
+            color: var(--text-soft);
+            margin-bottom: 2.5rem;
+            font-size: 1.05rem;
         }
         
-        .description strong {
-            color: var(--deep-rose);
-            font-weight: 600;
+        .input-group {
+            margin-bottom: 2rem;
         }
         
-        .form-section {
-            margin-bottom: 40px;
-        }
-        
-        .form-label {
+        .input-label {
             display: block;
             font-family: 'Playfair Display', serif;
-            font-size: 1.1em;
             font-weight: 600;
-            color: var(--text-dark);
-            margin-bottom: 12px;
-            position: relative;
-            padding-left: 30px;
+            color: var(--text-charcoal);
+            margin-bottom: 0.8rem;
+            font-size: 1.1rem;
         }
         
-        .form-label::before {
-            content: '💖';
-            position: absolute;
-            left: 0;
-            top: 0;
-            font-size: 1.2em;
-        }
-        
-        .form-input {
+        .literary-input {
             width: 100%;
-            padding: 20px 25px;
-            border: 3px solid var(--primary-pink);
-            border-radius: 15px;
+            padding: 1rem 1.5rem;
+            border: 2px solid var(--border-subtle);
+            border-radius: 8px;
             font-family: 'Crimson Text', serif;
-            font-size: 1.1em;
-            background: linear-gradient(135deg, var(--white) 0%, var(--soft-pink) 100%);
-            color: var(--text-dark);
+            font-size: 1.05rem;
+            background: white;
+            color: var(--text-charcoal);
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(248, 187, 217, 0.2);
         }
         
-        .form-input:focus {
+        .literary-input:focus {
             outline: none;
-            border-color: var(--deep-rose);
-            box-shadow: 
-                0 0 0 4px rgba(232, 121, 249, 0.2),
-                0 8px 25px rgba(248, 187, 217, 0.4);
-            background: var(--white);
-            transform: translateY(-2px);
+            border-color: var(--accent-rust);
+            box-shadow: 0 0 0 3px rgba(184, 84, 80, 0.1);
         }
         
-        .form-input::placeholder {
+        .literary-input::placeholder {
             color: var(--text-soft);
             font-style: italic;
         }
         
-        .submit-btn {
+        /* Кнопка в стиле старой книги */
+        .manuscript-btn {
             width: 100%;
-            padding: 22px 30px;
-            background: linear-gradient(135deg, var(--deep-rose), var(--primary-pink));
+            padding: 1.2rem 2rem;
+            background: linear-gradient(135deg, var(--accent-rust), #9d4a46);
             color: white;
             border: none;
-            border-radius: 15px;
+            border-radius: 8px;
             font-family: 'Playfair Display', serif;
-            font-size: 1.2em;
+            font-size: 1.1rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 
-                0 6px 20px rgba(232, 121, 249, 0.3),
-                inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 15px rgba(184, 84, 80, 0.3);
             position: relative;
             overflow: hidden;
         }
         
-        .submit-btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-            transition: all 0.6s ease;
-        }
-        
-        .submit-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 
-                0 12px 30px rgba(232, 121, 249, 0.4),
-                inset 0 1px 0 rgba(255, 255, 255, 0.3);
-        }
-        
-        .submit-btn:hover::before {
-            left: 100%;
-        }
-        
-        .submit-btn:disabled {
-            opacity: 0.7;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .example-link {
-            margin-top: 20px;
-            text-align: center;
-            font-size: 1em;
-            color: var(--text-soft);
-            font-family: 'Dancing Script', cursive;
-        }
-        
-        .example-link a {
-            color: var(--deep-rose);
-            text-decoration: none;
-            font-weight: 600;
-            border-bottom: 2px dotted var(--primary-pink);
-            transition: all 0.3s ease;
-        }
-        
-        .example-link a:hover {
-            color: var(--primary-pink);
-            border-bottom-style: solid;
-            text-shadow: 0 2px 4px rgba(248, 187, 217, 0.3);
-        }
-        
-        .status {
-            margin-top: 30px;
-            padding: 25px;
-            border-radius: 15px;
-            display: none;
-            border: 2px solid;
-            font-family: 'Crimson Text', serif;
-            font-size: 1.1em;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .status::before {
+        .manuscript-btn::before {
             content: '';
             position: absolute;
             top: 0;
@@ -388,312 +237,288 @@
             width: 100%;
             height: 100%;
             background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            animation: shimmer 2s infinite;
+            transition: all 0.6s ease;
         }
         
-        @keyframes shimmer {
-            0% { left: -100%; }
-            100% { left: 100%; }
+        .manuscript-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(184, 84, 80, 0.4);
         }
         
-        .status.processing {
+        .manuscript-btn:hover::before {
+            left: 100%;
+        }
+        
+        .manuscript-btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Статус в литературном стиле */
+        .manuscript-status {
+            margin-top: 2rem;
+            padding: 2rem;
+            border-radius: 12px;
+            display: none;
+            font-size: 1.05rem;
+            position: relative;
+            border-left: 5px solid;
+        }
+        
+        .manuscript-status.writing {
             background: linear-gradient(135deg, #fef3c7, #fde68a);
             border-color: #f59e0b;
             color: #92400e;
         }
         
-        .status.ready {
+        .manuscript-status.complete {
             background: linear-gradient(135deg, #d1fae5, #a7f3d0);
             border-color: #10b981;
             color: #047857;
         }
         
-        .status.error {
+        .manuscript-status.error {
             background: linear-gradient(135deg, #fee2e2, #fecaca);
             border-color: #ef4444;
             color: #dc2626;
         }
         
-        .progress-bar {
+        .progress-indicator {
             width: 100%;
-            height: 8px;
+            height: 6px;
             background: rgba(255, 255, 255, 0.5);
-            border-radius: 4px;
-            margin: 20px 0;
+            border-radius: 3px;
+            margin: 1.5rem 0;
             overflow: hidden;
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
         }
         
         .progress-fill {
             height: 100%;
-            background: linear-gradient(90deg, var(--deep-rose), var(--primary-pink), var(--lavender));
+            background: linear-gradient(90deg, var(--accent-rust), var(--accent-gold));
             width: 0%;
             transition: width 0.4s ease;
-            border-radius: 4px;
-            position: relative;
-            animation: progress-glow 2s ease-in-out infinite;
+            border-radius: 3px;
         }
         
-        @keyframes progress-glow {
-            0%, 100% { box-shadow: 0 0 5px rgba(232, 121, 249, 0.5); }
-            50% { box-shadow: 0 0 20px rgba(232, 121, 249, 0.8); }
-        }
-        
-        .download-links {
-            margin-top: 25px;
+        /* Ссылки для скачивания */
+        .manuscript-downloads {
+            margin-top: 1.5rem;
             display: flex;
-            gap: 15px;
+            gap: 1rem;
             justify-content: center;
             flex-wrap: wrap;
         }
         
-        .download-btn {
-            padding: 15px 25px;
-            background: linear-gradient(135deg, var(--lavender), var(--mint));
-            color: var(--text-dark);
+        .download-link {
+            padding: 0.8rem 1.5rem;
+            background: white;
+            color: var(--accent-rust);
             text-decoration: none;
-            border-radius: 12px;
-            font-family: 'Playfair Display', serif;
-            font-size: 1em;
+            border: 2px solid var(--accent-rust);
+            border-radius: 6px;
+            font-family: 'Crimson Text', serif;
             font-weight: 600;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(167, 243, 208, 0.3);
-            border: 2px solid rgba(255, 255, 255, 0.5);
+            font-size: 0.95rem;
         }
         
-        .download-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(167, 243, 208, 0.4);
-            background: linear-gradient(135deg, var(--mint), var(--lavender));
+        .download-link:hover {
+            background: var(--accent-rust);
+            color: white;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(184, 84, 80, 0.3);
         }
         
-        .features {
-            margin-top: 50px;
-            border-top: 3px solid var(--primary-pink);
-            padding-top: 40px;
-            position: relative;
+        /* О книге */
+        .about-book {
+            border-top: 1px solid var(--border-subtle);
+            margin-top: 4rem;
+            padding-top: 3rem;
         }
         
-        .features::before {
-            content: '✨💖✨';
-            position: absolute;
-            top: -15px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--white);
-            padding: 0 20px;
-            font-size: 1.5em;
-        }
-        
-        .features-title {
+        .about-title {
             font-family: 'Playfair Display', serif;
-            font-size: 2.2em;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--deep-rose), var(--primary-pink));
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 35px;
+            font-size: 1.5rem;
+            color: var(--text-charcoal);
             text-align: center;
+            margin-bottom: 2rem;
         }
         
         .features-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-            gap: 25px;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
         }
         
-        .feature {
-            padding: 30px;
-            background: linear-gradient(135deg, var(--white) 0%, var(--soft-pink) 100%);
-            border-radius: 20px;
-            border-left: 5px solid var(--deep-rose);
-            font-size: 1em;
-            line-height: 1.7;
-            box-shadow: 0 8px 25px rgba(248, 187, 217, 0.2);
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
+        .feature-card {
+            padding: 1.5rem;
+            background: linear-gradient(135deg, #fefcf8 0%, #f7f4ed 100%);
+            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+            text-align: center;
         }
         
-        .feature::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: linear-gradient(135deg, transparent, rgba(232, 121, 249, 0.1), transparent);
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-        
-        .feature:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 15px 40px rgba(248, 187, 217, 0.3);
-        }
-        
-        .feature:hover::before {
-            opacity: 1;
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
         }
         
         .feature-title {
             font-family: 'Playfair Display', serif;
             font-weight: 600;
-            color: var(--deep-rose);
-            margin-bottom: 12px;
-            font-size: 1.3em;
-            position: relative;
-            z-index: 1;
+            color: var(--text-charcoal);
+            margin-bottom: 0.8rem;
         }
         
         .feature-description {
-            color: var(--text-dark);
-            font-size: 1em;
-            position: relative;
-            z-index: 1;
+            color: var(--text-soft);
+            font-size: 0.95rem;
+            line-height: 1.6;
         }
         
-        .spinner {
-            display: inline-block;
-            width: 18px;
-            height: 18px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-top: 2px solid white;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-right: 10px;
+        /* Подпись автора */
+        .author-signature {
+            text-align: right;
+            margin-top: 4rem;
+            font-style: italic;
+            color: var(--text-soft);
         }
         
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
+        /* Адаптивность */
         @media (max-width: 768px) {
-            .book-header {
-                padding: 40px 30px 30px;
-            }
-            
-            .book-content {
-                padding: 30px;
+            .literary-wrapper {
+                margin: 20px;
+                padding: 30px 20px;
             }
             
             .book-title {
-                font-size: 2.2em;
+                font-size: 2.2rem;
             }
             
-            .book-subtitle {
-                font-size: 1.2em;
-            }
-            
-            .description {
-                padding: 25px;
-                font-size: 1em;
-            }
-            
-            .download-links {
-                flex-direction: column;
+            .manuscript-form {
+                padding: 2rem;
             }
             
             .features-grid {
                 grid-template-columns: 1fr;
             }
-            
-            .floating-elements {
-                display: none;
-            }
         }
     </style>
 </head>
 <body>
-    <div class="floating-elements">
-        <div class="floating-heart">💕</div>
-        <div class="floating-heart">💖</div>
-        <div class="floating-star">✨</div>
-        <div class="floating-star">⭐</div>
-        <div class="floating-flower">🌸</div>
-        <div class="floating-flower">🌺</div>
-    </div>
-    
-    <div class="book-container">
-        <div class="book-header">
-            <div class="book-icon">📚</div>
-            <h1 class="book-title">Instagram Books</h1>
-            <p class="book-subtitle">
-                Создание волшебных персональных книг из твоих любимых Instagram моментов ✨
-            </p>
+    <div class="literary-wrapper">
+        <h1 class="book-title">Instagram-книга</h1>
+        <p class="book-subtitle">Создание литературных историй от первого лица по материалам профилей</p>
+        
+        <div class="epigraph">
+            «Каждая фотография — это остановленное мгновение чьей-то жизни»
         </div>
         
-        <div class="book-content">
-            <div class="description">
-                <strong>Магия воспоминаний!</strong> Я превращаю обычные Instagram профили в потрясающие персональные книги. 
-                Каждая фотография, каждый момент станет частью красивой истории. 
-                Идеальный подарок для себя или близких - книга, которая сохранит самые дорогие воспоминания навсегда! 💝
+        <p class="literary-text">
+            Я наткнулся на эту идею случайно, как натыкаются на неожиданные повороты в лабиринте старого города. Листая бесконечные ленты социальных сетей, я понял: за каждым профилем скрывается история, которую стоит рассказать от первого лица — честно, с эмоциями и без прикрас.
+        </p>
+        
+        <p class="literary-text">
+            Что если превратить чей-то Instagram в настоящую книгу? Не просто коллаж из фотографий, а литературное произведение, где я становлюсь наблюдателем, исследователем чужой жизни, рассказчиком историй, которые прячутся между строк подписей к постам.
+        </p>
+        
+        <p class="literary-text">
+            Каждая книга состоит из пролога, пяти глав и эпилога. В ней живут мои впечатления от знакомства с профилем, мои размышления о том, что я вижу, диалоги, которые возникают в моей голове при просмотре фотографий. Это документальная проза с элементами художественного осмысления.
+        </p>
+        
+        <div class="manuscript-form">
+            <div class="form-introduction">
+                Поделитесь ссылкой на Instagram-профиль, и я создам для вас персональную книгу от первого лица
             </div>
             
             <form id="bookForm">
-                <div class="form-section">
-                    <label class="form-label" for="instagram-url">
-                        Instagram профиль для создания книги
-                    </label>
+                <div class="input-group">
+                    <label class="input-label">Ссылка на Instagram-профиль</label>
                     <input 
                         type="url" 
                         id="instagram-url" 
-                        class="form-input"
-                        placeholder="https://www.instagram.com/username ✨"
+                        class="literary-input"
+                        placeholder="https://instagram.com/username или @username"
                         required
-                    />
-                    <div class="example-link">
-                        <strong>Попробуй пример:</strong> 
-                        <a href="#" onclick="document.getElementById('instagram-url').value='https://www.instagram.com/ualikhaanuly'">
-                            https://www.instagram.com/ualikhaanuly
-                        </a>
-                    </div>
+                    >
                 </div>
                 
-                <button type="submit" class="submit-btn" id="generateBtn">
-                    ✨ Создать мою волшебную книгу ✨
+                <button type="submit" class="manuscript-btn" id="generateBtn">
+                    Создать литературную Instagram-книгу
                 </button>
             </form>
             
-            <div id="status" class="status">
+            <div id="status" class="manuscript-status">
                 <div id="statusMessage"></div>
-                <div class="progress-bar">
+                <div class="progress-indicator">
                     <div class="progress-fill" id="progressFill"></div>
                 </div>
-                <div id="downloadLinks" class="download-links"></div>
+                <div id="downloadLinks" class="manuscript-downloads"></div>
             </div>
+        </div>
+        
+        <div class="about-book">
+            <h2 class="about-title">Что входит в вашу книгу</h2>
             
-            <div class="features">
-                <h3 class="features-title">Что входит в твою книгу</h3>
-                <div class="features-grid">
-                    <div class="feature">
-                        <div class="feature-title">✨ Обложка-мечта</div>
-                        <div class="feature-description">
-                            Персональная обложка с твоим именем и красивой статистикой профиля
-                        </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">📖</div>
+                    <div class="feature-title">Обложка с эпиграфом</div>
+                    <div class="feature-description">
+                        Название книги, подзаголовок и короткий эпиграф, отражающий суть профиля
                     </div>
-                    <div class="feature">
-                        <div class="feature-title">💖 Анализ твоего стиля</div>
-                        <div class="feature-description">
-                            Подробный разбор твоих постов, любимых хэштегов и особенных мест
-                        </div>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">✍️</div>
+                    <div class="feature-title">Пролог от первого лица</div>
+                    <div class="feature-description">
+                        Мой рассказ о том, как я впервые наткнулся на профиль и что почувствовал
                     </div>
-                    <div class="feature">
-                        <div class="feature-title">📸 Галерея воспоминаний</div>
-                        <div class="feature-description">
-                            Самые красивые фотографии с персональными подписями между текстом
-                        </div>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">📚</div>
+                    <div class="feature-title">Пять литературных глав</div>
+                    <div class="feature-description">
+                        Каждая глава с эпиграфом, 8-12 абзацев живого текста и одной фотографией
                     </div>
-                    <div class="feature">
-                        <div class="feature-title">🎁 Три формата подарка</div>
-                        <div class="feature-description">
-                            PDF для печати, HTML для просмотра онлайн, Markdown для редактирования
-                        </div>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">🖼️</div>
+                    <div class="feature-title">Встроенные фотографии</div>
+                    <div class="feature-description">
+                        Реальные фото из профиля с поэтичными описаниями и подписями
+                    </div>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">💭</div>
+                    <div class="feature-title">Живые размышления</div>
+                    <div class="feature-description">
+                        30% атмосферных описаний, 20% внутренних размышлений, диалоги
+                    </div>
+                </div>
+                
+                <div class="feature-card">
+                    <div class="feature-icon">🎭</div>
+                    <div class="feature-title">Эпилог-обращение</div>
+                    <div class="feature-description">
+                        Финальные размышления и обращение к читателю от первого лица
                     </div>
                 </div>
             </div>
+        </div>
+        
+        <div class="dialogue">
+            Помните: каждая история уникальна. Алгоритм не создает шаблонные тексты — каждая книга пишется индивидуально, основываясь на реальном содержимом профиля.
+        </div>
+        
+        <div class="author-signature">
+            — Ваш цифровой рассказчик
         </div>
     </div>
 
@@ -708,23 +533,51 @@
             const btn = document.getElementById('generateBtn');
             
             btn.disabled = true;
-            btn.innerHTML = '<span class="spinner"></span>Создаю твою волшебную книгу...';
+            btn.innerHTML = 'Создаю вашу историю...';
             
             try {
-                const response = await fetch(`/start-scrape?url=${encodeURIComponent(url)}`);
-                const data = await response.json();
+                // Запускаем сбор данных профиля
+                const scrapeResponse = await fetch(`/start-scrape?url=${encodeURIComponent(url)}`);
+                const scrapeData = await scrapeResponse.json();
                 
-                if (response.ok) {
-                    currentRunId = data.runId;
-                    showStatus('processing', '✨ Собираю твои самые красивые моменты...');
-                    startProgress();
-                    
-                    checkInterval = setInterval(checkStatus, 3000);
-                } else {
-                    throw new Error(data.detail || 'Ошибка при создании книги');
+                if (!scrapeResponse.ok) {
+                    throw new Error(scrapeData.detail || 'Ошибка при сборе данных профиля');
                 }
+                
+                currentRunId = scrapeData.runId;
+                showStatus('writing', 'Изучаю профиль и собираю материалы для книги...');
+                startProgress();
+                
+                // Создаем книгу после сбора данных
+                setTimeout(async () => {
+                    try {
+                        const bookResponse = await fetch('/create-book', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                runId: currentRunId,
+                                format: 'classic' // Всегда классический формат для литературной книги
+                            })
+                        });
+                        
+                        const bookData = await bookResponse.json();
+                        
+                        if (bookResponse.ok) {
+                            updateProgress(50, 'Пишу главы и встраиваю фотографии...');
+                            checkInterval = setInterval(checkStatus, 2000);
+                        } else {
+                            throw new Error(bookData.detail || 'Ошибка при создании книги');
+                        }
+                    } catch (error) {
+                        showStatus('error', `Ошибка создания: ${error.message}`);
+                        resetButton();
+                    }
+                }, 6000);
+                
             } catch (error) {
-                showStatus('error', `Упс! ${error.message}`);
+                showStatus('error', `Ошибка: ${error.message}`);
                 resetButton();
             }
         });
@@ -737,27 +590,27 @@
                 const data = await response.json();
                 
                 if (data.stages.data_collected) {
-                    updateProgress(33, '💖 Данные собраны, загружаю фотографии...');
+                    updateProgress(33, 'Данные собраны, анализирую содержимое...');
                 }
                 
                 if (data.stages.images_downloaded) {
-                    updateProgress(66, '📚 Создаю твою персональную книгу...');
+                    updateProgress(66, 'Фотографии загружены, пишу литературный текст...');
                 }
                 
                 if (data.stages.book_generated) {
-                    updateProgress(100, '🎉 Твоя волшебная книга готова!');
+                    updateProgress(100, 'Ваша Instagram-книга готова!');
                     clearInterval(checkInterval);
                     
                     const profileInfo = data.profile ? 
-                        `✨ Книга для @${data.profile.username} создана с любовью! 💕` : 
-                        '🎁 Твоя персональная книга готова!';
+                        `Литературная книга по профилю @${data.profile.username} создана` : 
+                        'Ваша персональная Instagram-книга готова к чтению';
                     
-                    showStatus('ready', profileInfo);
+                    showStatus('complete', profileInfo);
                     
                     const downloadHtml = `
-                        <a href="/download/${currentRunId}/book.pdf" class="download-btn">📄 PDF для печати</a>
-                        <a href="/view/${currentRunId}/book.html" class="download-btn" target="_blank">👁️ Читать онлайн</a>
-                        <a href="/download/${currentRunId}/book.md" class="download-btn">📝 Исходник</a>
+                        <a href="/view/${currentRunId}/book.html" class="download-link" target="_blank">📖 Читать книгу</a>
+                        <a href="/download/${currentRunId}/book.pdf" class="download-link">📄 Скачать PDF</a>
+                        <a href="/download/${currentRunId}/book.md" class="download-link">📝 Исходник</a>
                     `;
                     document.getElementById('downloadLinks').innerHTML = downloadHtml;
                     
@@ -772,7 +625,7 @@
             const status = document.getElementById('status');
             const statusMessage = document.getElementById('statusMessage');
             
-            status.className = `status ${type}`;
+            status.className = `manuscript-status ${type}`;
             status.style.display = 'block';
             statusMessage.innerHTML = message;
         }
@@ -783,13 +636,13 @@
         }
 
         function startProgress() {
-            updateProgress(10, '✨ Начинаю создание твоей книги...');
+            updateProgress(10, 'Начинаю работу над вашей книгой...');
         }
 
         function resetButton() {
             const btn = document.getElementById('generateBtn');
             btn.disabled = false;
-            btn.innerHTML = '✨ Создать мою волшебную книгу ✨';
+            btn.innerHTML = 'Создать литературную Instagram-книгу';
         }
     </script>
 </body>
